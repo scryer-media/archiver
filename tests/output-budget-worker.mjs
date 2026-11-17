@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {ZipWriter,BlobWriter,TextReader,configure} from '@zip.js/zip.js';
+import {runFallbackWorker} from './lib/zip-worker-harness.mjs';
+configure({useWebWorkers:false});
+const target=new BlobWriter(),zip=new ZipWriter(target);
+await zip.add('first.txt',new TextReader('abcd'));await zip.add('second.txt',new TextReader('efgh'));await zip.close();
+const file=new File([await target.getData()],'two.zip');
+let test=await runFallbackWorker(file,'extract',{outputLimitBytes:8,captureDownload:false});
+assert.equal(test.result.error,undefined);assert.equal(test.result.writeBudgetUsed,8);assert.equal(test.result.files.length,2);
+test=await runFallbackWorker(file,'extract',{outputLimitBytes:7,captureDownload:false});
+assert.match(test.result.error,/Write budget exceeded/);assert.equal(test.result.writeBudgetUsed,4);assert.equal(test.result.nativeCodecError,false);
+const gzip=new Blob([new TextEncoder().encode('a'.repeat(65536))]).stream().pipeThrough(new CompressionStream('gzip'));
+const compressed=new File([await new Response(gzip).blob()],'expanded.gz');
+test=await runFallbackWorker(compressed,'extract',{format:'gz',nativeStreams:true,outputLimitBytes:1024});
+assert.ok(test.result.error);assert.equal(test.closed,false);assert.ok(test.bytes<=1024);assert.ok(test.result.writeBudgetUsed<=1024);assert.equal(test.result.nativeCodecError,false);
+test=await runFallbackWorker(compressed,'extract',{format:'gz',nativeStreams:true,outputLimitBytes:65536});
+assert.equal(test.result.error,undefined);assert.equal(test.bytes,65536);assert.equal(test.result.writeBudgetUsed,65536);assert.equal(test.closed,true);
+console.log('PASS: actual fallback worker cumulative ZIP writes and unknown-size browser decode budget, exact boundary and aborted overrun');

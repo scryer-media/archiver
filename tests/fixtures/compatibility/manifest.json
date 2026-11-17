@@ -1,0 +1,386 @@
+[
+  {
+    "file": "oracle-copy.7z",
+    "feature": "7z Copy",
+    "outputs": [
+      {
+        "name": "payload.bin",
+        "size": 65536,
+        "sha256": "45e67bff4d18a4560ad9b0471e4ffb58d686fc41fb46bb49c78f99cdb17b7aa7"
+      }
+    ]
+  },
+  {
+    "file": "oracle-lzma.7z",
+    "feature": "7z LZMA",
+    "outputs": [
+      {
+        "name": "payload.bin",
+        "size": 65536,
+        "sha256": "45e67bff4d18a4560ad9b0471e4ffb58d686fc41fb46bb49c78f99cdb17b7aa7"
+      }
+    ]
+  },
+  {
+    "file": "oracle-lzma2.7z",
+    "feature": "7z LZMA2",
+    "outputs": [
+      {
+        "name": "payload.bin",
+        "size": 65536,
+        "sha256": "45e67bff4d18a4560ad9b0471e4ffb58d686fc41fb46bb49c78f99cdb17b7aa7"
+      }
+    ]
+  },
+  {
+    "file": "oracle-ppmd.7z",
+    "feature": "7z PPMd",
+    "outputs": [
+      {
+        "name": "payload.bin",
+        "size": 65536,
+        "sha256": "45e67bff4d18a4560ad9b0471e4ffb58d686fc41fb46bb49c78f99cdb17b7aa7"
+      }
+    ]
+  },
+  {
+    "file": "oracle-bzip2.7z",
+    "feature": "7z BZip2",
+    "outputs": [
+      {
+        "name": "payload.bin",
+        "size": 65536,
+        "sha256": "45e67bff4d18a4560ad9b0471e4ffb58d686fc41fb46bb49c78f99cdb17b7aa7"
+      }
+    ]
+  },
+  {
+    "file": "oracle-deflate.7z",
+    "feature": "7z Deflate",
+    "outputs": [
+      {
+        "name": "payload.bin",
+        "size": 65536,
+        "sha256": "45e67bff4d18a4560ad9b0471e4ffb58d686fc41fb46bb49c78f99cdb17b7aa7"
+      }
+    ]
+  },
+  {
+    "file": "rar15_lz.rar",
+    "feature": "rar15_lz.rar",
+    "allowExtraOutputs": true,
+    "outputs": [
+      {
+        "name": "BOATMO~1.WAV",
+        "size": 56464,
+        "sha256": "0aeeb3c12f01d7089ca83eb321d5a54673ba0e6011231f5bc1fa10102ea3d797"
+      }
+    ]
+  },
+  {
+    "file": "rar20_audio_text.rar",
+    "feature": "rar20_audio_text.rar",
+    "allowExtraOutputs": true,
+    "outputs": [
+      {
+        "name": "BoatModernEnglish.wav",
+        "size": 56464,
+        "sha256": "0aeeb3c12f01d7089ca83eb321d5a54673ba0e6011231f5bc1fa10102ea3d797"
+      }
+    ]
+  },
+  {
+    "file": "rar4_lz.rar",
+    "feature": "rar4 rar4_lz.rar",
+    "password": "",
+    "outputs": [
+      {
+        "name": "compressible.txt",
+        "size": 226943,
+        "crc32": "06b19020",
+        "sha256": "4d0d8762437ab166dabf6a8279e566214b3df55c392a63f9a7b7dd480eb25519"
+      }
+    ]
+  },
+  {
+    "file": "rar20_lz.rar",
+    "feature": "rar20_lz.rar",
+    "allowExtraOutputs": true,
+    "outputs": [
+      {
+        "name": "BoatModernEnglish.wav",
+        "size": 56464,
+        "sha256": "0aeeb3c12f01d7089ca83eb321d5a54673ba0e6011231f5bc1fa10102ea3d797"
+      }
+    ]
+  },
+  {
+    "file": "test_read_format_rar_filter.rar",
+    "feature": "rar4 test_read_format_rar_filter.rar",
+    "password": "",
+    "outputs": [
+      {
+        "name": "bsdcat.exe",
+        "size": 204288,
+        "crc32": "4db10349"
+      }
+    ]
+  },
+  {
+    "file": "test_read_format_rar5_arm.rar",
+    "feature": "rar5 test_read_format_rar5_arm.rar",
+    "password": "",
+    "outputs": [
+      {
+        "name": "elf-Linux-ARMv7-ls",
+        "size": 90808,
+        "crc32": "886f91eb"
+      }
+    ]
+  },
+  {
+    "file": "rar4_lz_solid_mv.rar",
+    "feature": "rar4 rar4_lz_solid_mv.rar",
+    "password": "",
+    "outputs": [
+      {
+        "name": "lz_part0.bin",
+        "size": 307200,
+        "crc32": "693b59fe"
+      },
+      {
+        "name": "lz_part1.bin",
+        "size": 307200,
+        "crc32": "e68b6825"
+      },
+      {
+        "name": "lz_part2.bin",
+        "size": 307200,
+        "crc32": "f06e8ae7"
+      }
+    ]
+  },
+  {
+    "file": "rar4_ppm_solid_mv.rar",
+    "feature": "rar4 rar4_ppm_solid_mv.rar",
+    "password": "",
+    "outputs": [
+      {
+        "name": "ppm_part0.txt",
+        "size": 2881486,
+        "crc32": "77d865d9"
+      },
+      {
+        "name": "ppm_part1.txt",
+        "size": 2880210,
+        "crc32": "b48c3ba8"
+      },
+      {
+        "name": "ppm_part2.txt",
+        "size": 2881867,
+        "crc32": "f2ac42ed"
+      }
+    ]
+  },
+  {
+    "file": "rar4_hp_store.rar",
+    "feature": "rar4 rar4_hp_store.rar",
+    "password": "secretpass",
+    "outputs": [
+      {
+        "name": "small.txt",
+        "size": 48,
+        "crc32": "e9310735"
+      }
+    ]
+  },
+  {
+    "file": "rar4_enc_store.rar",
+    "feature": "rar4 rar4_enc_store.rar",
+    "password": "testpass123",
+    "outputs": [
+      {
+        "name": "small.txt",
+        "size": 290,
+        "crc32": "18b6631b",
+        "sha256": "8cb8611917f32294a1456271971c441d15c0bfd4bc6dfa338235c09d3bb648ed"
+      }
+    ]
+  },
+  {
+    "file": "test_read_format_rar_sfx.exe",
+    "feature": "rar4 test_read_format_rar_sfx.exe",
+    "password": "",
+    "outputs": [
+      {
+        "name": "test.txt",
+        "size": 16,
+        "crc32": "97d612f1"
+      },
+      {
+        "name": "testshortcut.lnk",
+        "size": 441,
+        "crc32": "5b5cd737"
+      },
+      {
+        "name": "testdir/test.txt",
+        "size": 16,
+        "crc32": "97d612f1"
+      }
+    ]
+  },
+  {
+    "file": "rar5_enc_store.rar",
+    "feature": "rar5 rar5_enc_store.rar",
+    "password": "testpass123",
+    "outputs": [
+      {
+        "name": "small.txt",
+        "size": 290,
+        "crc32": "",
+        "sha256": "8cb8611917f32294a1456271971c441d15c0bfd4bc6dfa338235c09d3bb648ed"
+      }
+    ]
+  },
+  {
+    "file": "rar5_multifile_lz.rar",
+    "feature": "rar5 rar5_multifile_lz.rar",
+    "password": "",
+    "outputs": [
+      {
+        "name": "hello.txt",
+        "size": 14,
+        "crc32": "7b55a718",
+        "sha256": "d9014c4624844aa5bac314773d6b689ad467fa4e1d1a50a1b8a99d5a95f72ff5"
+      },
+      {
+        "name": "second.txt",
+        "size": 25,
+        "crc32": "1c10a63b",
+        "sha256": "eaef64337c0a7c6820e36a35538d35af10f984e45634df25a0d75343a783a200"
+      },
+      {
+        "name": "zeros_64k.bin",
+        "size": 65536,
+        "crc32": "d7978eeb",
+        "sha256": "de2f256064a0af797747c2b97505dc0b9f3df0de4f489eac731c23ae9ca9cc31"
+      }
+    ]
+  },
+  {
+    "file": "rar5_unicode.rar",
+    "feature": "rar5 rar5_unicode.rar",
+    "password": "",
+    "outputs": [
+      {
+        "name": "\u65e5\u672c\u8a9e\u30d5\u30a1\u30a4\u30eb.txt",
+        "size": 19,
+        "sha256": "c9ab5cc40fb5a78145b9d1aa56cc98470edc4c086bce7fecfea1de41a1aa99af"
+      },
+      {
+        "name": "caf\u00e9-r\u00e9sum\u00e9.txt",
+        "size": 19,
+        "sha256": "f7c2964785985ca9b8deefc2297a2230dcad81cbe7b3c257b57878a9578451c6"
+      }
+    ]
+  },
+  {
+    "file": "rar5_recovery_volumes.part01.rar",
+    "files": [
+      "rar5_recovery_volumes.part01.rar",
+      "rar5_recovery_volumes.part02.rar",
+      "rar5_recovery_volumes.part03.rar",
+      "rar5_recovery_volumes.part04.rar",
+      "rar5_recovery_volumes.part05.rar",
+      "rar5_recovery_volumes.part06.rar",
+      "rar5_recovery_volumes.part07.rar",
+      "rar5_recovery_volumes.part08.rar",
+      "rar5_recovery_volumes.part09.rar",
+      "rar5_recovery_volumes.part10.rar"
+    ],
+    "feature": "RAR5 multipart ten volumes",
+    "outputs": [
+      {
+        "name": "payload.bin",
+        "size": 8192,
+        "crc32": "49f58485"
+      }
+    ]
+  },
+  {
+    "file": "delta.7z",
+    "feature": "7z filters delta.7z",
+    "outputs": [
+      {
+        "name": "delta.txt",
+        "size": 12,
+        "sha256": "11c85195ae99540ac07f80e2905e6e39aaefc4ac94cd380f366e79ba83560566"
+      }
+    ]
+  },
+  {
+    "file": "delta_bcj2.7z",
+    "feature": "7z filters delta_bcj2.7z",
+    "outputs": [
+      {
+        "name": "c/code1.bin",
+        "size": 9000,
+        "sha256": "16da29da350b02eba9bc715ea04ecaddc01b30144fa3c4cdeca615d3583cd9cc"
+      },
+      {
+        "name": "c/code2.bin",
+        "size": 7000,
+        "sha256": "4ccdc2aa6bbe17c3ad9587c56c1a4196a90a807681bb0330963988b4e2ffa310"
+      },
+      {
+        "name": "c/wave.bin",
+        "size": 16000,
+        "sha256": "61be64936efe080fa6c42c68cc494a4b5f1c1e10745b68c88648b240993158cb"
+      }
+    ]
+  },
+  {
+    "file": "7za433_7zip_lzma2_bcj2.7z",
+    "feature": "7z filters 7za433_7zip_lzma2_bcj2.7z",
+    "outputs": [
+      {
+        "name": "7za433_7zip_lzma2_bcj2/bin/7za.exe",
+        "size": 462336,
+        "sha256": "2f400a19712c7ff6e6bb51be8975391789af9983d545ade243798c1832c95e20"
+      },
+      {
+        "name": "7za433_7zip_lzma2_bcj2/doc/copying.txt",
+        "size": 26948,
+        "sha256": "2c3c3ef532828bcd42bb3127349625a25291ff5ae7e6f8d42e0fe9b5be836a99"
+      },
+      {
+        "name": "7za433_7zip_lzma2_bcj2/readme.txt",
+        "size": 1601,
+        "sha256": "2a58488a3410536b69fb93634f05c9be8133b9afbdbd646e07fc55dd1289d4b7"
+      }
+    ]
+  },
+  {
+    "file": "decompress_example_bcj_arm64.7z",
+    "feature": "7z filters decompress_example_bcj_arm64.7z",
+    "outputs": [
+      {
+        "name": "decompress_arm64.exe",
+        "size": 357888,
+        "sha256": "b52529963e508a7a49ff3630fce157c79a1a1c083850f34ff0d3f1a024466dd4"
+      }
+    ]
+  },
+  {
+    "file": "zstdmt-brotli.7z",
+    "feature": "zstdmt-brotli.7z",
+    "contains": "Apache License",
+    "expectedName": "LICENSE"
+  },
+  {
+    "file": "zstdmt-lz4.7z",
+    "feature": "zstdmt-lz4.7z",
+    "contains": "Apache License",
+    "expectedName": "LICENSE"
+  }
+]

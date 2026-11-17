@@ -1,0 +1,146 @@
+[
+  {
+    "format": "gzip",
+    "suffix": "gz",
+    "file": "payload-gz.bin",
+    "name": "input.bin.gz",
+    "dataset": "payload",
+    "concatenated": true
+  },
+  {
+    "format": "bzip2",
+    "suffix": "bz2",
+    "file": "payload-bz2.bin",
+    "name": "input.bin.bz2",
+    "dataset": "payload",
+    "concatenated": true
+  },
+  {
+    "format": "xz",
+    "suffix": "xz",
+    "file": "payload-xz.bin",
+    "name": "input.bin.xz",
+    "dataset": "payload",
+    "concatenated": true
+  },
+  {
+    "format": "lzma",
+    "suffix": "lzma",
+    "file": "payload-lzma.bin",
+    "name": "input.bin.lzma",
+    "dataset": "payload",
+    "concatenated": false
+  },
+  {
+    "format": "zstd",
+    "suffix": "zst",
+    "file": "payload-zst.bin",
+    "name": "input.bin.zst",
+    "dataset": "payload",
+    "concatenated": true
+  },
+  {
+    "format": "brotli",
+    "suffix": "br",
+    "file": "payload-br.bin",
+    "name": "input.bin.br",
+    "dataset": "payload",
+    "concatenated": false
+  },
+  {
+    "format": "lz4",
+    "suffix": "lz4",
+    "file": "payload-lz4.bin",
+    "name": "input.bin.lz4",
+    "dataset": "payload",
+    "concatenated": true
+  },
+  {
+    "format": "deflate",
+    "suffix": "deflate",
+    "file": "payload-deflate.bin",
+    "name": "input.bin.deflate",
+    "dataset": "payload",
+    "concatenated": false
+  },
+  {
+    "format": "zlib",
+    "suffix": "zlib",
+    "file": "payload-zlib.bin",
+    "name": "input.bin.zlib",
+    "dataset": "payload",
+    "concatenated": false
+  },
+  {
+    "format": "gzip",
+    "suffix": "gz",
+    "file": "tar-gz.bin",
+    "name": "input.tar.gz",
+    "dataset": "tar",
+    "concatenated": true
+  },
+  {
+    "format": "bzip2",
+    "suffix": "bz2",
+    "file": "tar-bz2.bin",
+    "name": "input.tar.bz2",
+    "dataset": "tar",
+    "concatenated": true
+  },
+  {
+    "format": "xz",
+    "suffix": "xz",
+    "file": "tar-xz.bin",
+    "name": "input.tar.xz",
+    "dataset": "tar",
+    "concatenated": true
+  },
+  {
+    "format": "lzma",
+    "suffix": "lzma",
+    "file": "tar-lzma.bin",
+    "name": "input.tar.lzma",
+    "dataset": "tar",
+    "concatenated": false
+  },
+  {
+    "format": "zstd",
+    "suffix": "zst",
+    "file": "tar-zst.bin",
+    "name": "input.tar.zst",
+    "dataset": "tar",
+    "concatenated": true
+  },
+  {
+    "format": "brotli",
+    "suffix": "br",
+    "file": "tar-br.bin",
+    "name": "input.tar.br",
+    "dataset": "tar",
+    "concatenated": false
+  },
+  {
+    "format": "lz4",
+    "suffix": "lz4",
+    "file": "tar-lz4.bin",
+    "name": "input.tar.lz4",
+    "dataset": "tar",
+    "concatenated": true
+  },
+  {
+    "format": "deflate",
+    "suffix": "deflate",
+    "file": "tar-deflate.bin",
+    "name": "input.tar.deflate",
+    "dataset": "tar",
+    "concatenated": false
+  },
+  {
+    "format": "zlib",
+    "suffix": "zlib",
+    "file": "tar-zlib.bin",
+    "name": "input.tar.zlib",
+    "dataset": "tar",
+    "concatenated": false
+  }
+]

@@ -1,0 +1,93 @@
+{
+  "scope": "Dot-root and canonical path regressions; system bsdtar PAX and independently generated Python GNU format (not GNU CLI)",
+  "cases": [
+    {
+      "archive": "bsdtar-pax.tar",
+      "sha256": "4160467376948d5a6952df2688001463049ccab140e3e265f860c581da5988bc",
+      "expected": [
+        {
+          "name": "alpha.txt",
+          "directory": false,
+          "modifiedTime": 1700000000125,
+          "bytes": 16,
+          "sha256": "aa95232621e54961163e626f618ae14090933dca9dbcae8b1a9ea3303dc62783"
+        },
+        {
+          "name": "empty",
+          "directory": true,
+          "modifiedTime": 1700000000125
+        },
+        {
+          "name": "hard.txt",
+          "directory": false,
+          "modifiedTime": 1700000000125,
+          "bytes": 16,
+          "sha256": "aa95232621e54961163e626f618ae14090933dca9dbcae8b1a9ea3303dc62783"
+        },
+        {
+          "name": "nested",
+          "directory": true,
+          "modifiedTime": 1700000000125
+        },
+        {
+          "name": "nested/beta.txt",
+          "directory": false,
+          "modifiedTime": 1700000000125,
+          "bytes": 14,
+          "sha256": "a8095d6d765d77786671b733d7525f3e606c3c9d995a3cb2c40bc7017f4937b2"
+        },
+        {
+          "name": "nested/copy.txt",
+          "directory": false,
+          "modifiedTime": 1700000000125,
+          "bytes": 16,
+          "sha256": "aa95232621e54961163e626f618ae14090933dca9dbcae8b1a9ea3303dc62783"
+        }
+      ]
+    },
+    {
+      "archive": "python-gnu.tar",
+      "sha256": "25b8102dbc5fef1ea085a25bed4abffca2513785c8cba6671bf5a20bdfbef604",
+      "expected": [
+        {
+          "name": "alpha.txt",
+          "directory": false,
+          "modifiedTime": 1700000000000,
+          "bytes": 16,
+          "sha256": "aa95232621e54961163e626f618ae14090933dca9dbcae8b1a9ea3303dc62783"
+        },
+        {
+          "name": "empty",
+          "directory": true,
+          "modifiedTime": 1700000000000
+        },
+        {
+          "name": "hard.txt",
+          "directory": false,
+          "modifiedTime": 1700000000000,
+          "bytes": 16,
+          "sha256": "aa95232621e54961163e626f618ae14090933dca9dbcae8b1a9ea3303dc62783"
+        },
+        {
+          "name": "nested",
+          "directory": true,
+          "modifiedTime": 1700000000000
+        },
+        {
+          "name": "nested/beta.txt",
+          "directory": false,
+          "modifiedTime": 1700000000000,
+          "bytes": 14,
+          "sha256": "a8095d6d765d77786671b733d7525f3e606c3c9d995a3cb2c40bc7017f4937b2"
+        },
+        {
+          "name": "nested/copy.txt",
+          "directory": false,
+          "modifiedTime": 1700000000000,
+          "bytes": 16,
+          "sha256": "aa95232621e54961163e626f618ae14090933dca9dbcae8b1a9ea3303dc62783"
+        }
+      ]
+    }
+  ]
+}

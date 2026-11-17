@@ -1,0 +1,2 @@
+:root{color-scheme:dark;--text:#e7eaf0;--label:#ccd2dc;--muted:#9ca5b5;--border:#343a46;--border-strong:#4b5362;--panel:#1d2129;--surface:#171b22;--raised:#2a303b;--focus:#c4cedd;--button:#e1e6ee;--button-hover:#f6f8fb;--button-text:#171b22;--error-bg:#39272e;--error-border:#68404c;--error-text:#f0b8c5;color:var(--text);background:#101319}
+body{background:#101319}input[type=checkbox]{accent-color:#c4cedd}progress{accent-color:#c4cedd}::selection{background:#596577;color:#fff}

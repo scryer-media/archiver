@@ -1,0 +1,10 @@
+import {ArchiveEngine} from "../src/tool-engine";
+const engine=new ArchiveEngine();const results:{name:string;ok:boolean;detail?:string}[]=[];
+const check=(v:unknown,m:string)=>{if(!v)throw Error(m)};
+const report=(done=false)=>document.querySelector("#results")!.textContent=JSON.stringify({done,passed:results.filter(r=>r.ok).length,total:results.length,results},null,2);
+const test=async(name:string,fn:()=>Promise<void>)=>{try{await fn();results.push({name,ok:true})}catch(error){results.push({name,ok:false,detail:String(error)})}report()};
+const fixture=async(path:string,name=path)=>{const response=await fetch("/tests/fixtures/tar-compatibility/"+path);if(!response.ok)throw Error("Missing fixture "+path+": HTTP "+response.status);return new File([await response.arrayBuffer()],name)};
+const manifest=await(await fetch("/tests/fixtures/tar-compatibility/manifest.json")).json();
+for(const entry of manifest)for(const compressed of [false,true])await test(entry.label+(compressed?" TAR.ZST":" TAR")+" long path/list/extract",async()=>{const file=await fixture(entry.label+(compressed?"-zst.bin":".tar"),entry.label+".tar"+(compressed?".zst":""));const listed=await engine.list([file]);check(listed.entries?.some(e=>e.name===entry.longName),"Long path absent from listing");check(listed.entries?.some(e=>e.isDirectory&&e.name.replace(/\/$/,"")==="empty-directory"),"Empty directory absent from listing");const output=await engine.extract([file]);check(output.files.length===entry.files.length,"Unexpected output count");for(const expected of entry.files){const found=output.files.find(f=>f.name===expected.name);check(found&&await found.blob.text()===expected.text,"TAR payload/path mismatch");}});
+for(const name of ["pax-traversal.tar","gnu-traversal.tar","truncated.tar","bad-checksum.tar","bad-pax-record.tar","link.tar"])await test("refuse "+name,async()=>{const file=await fixture(name);let failed=false;try{await engine.extract([file])}catch{failed=true}check(failed,"Unsafe/malformed TAR accepted")});
+await engine.dispose();report(true);

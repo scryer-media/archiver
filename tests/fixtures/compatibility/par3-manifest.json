@@ -1,0 +1,31 @@
+[
+  {
+    "feature": "fft",
+    "files": [
+      "fft.par3",
+      "fft.vol0+1.par3",
+      "fft.vol1+2.par3",
+      "fft.vol3+4.par3",
+      "fft.vol7+1.par3"
+    ]
+  },
+  {
+    "feature": "fft16",
+    "files": [
+      "fft16.par3",
+      "fft16.vol00+1.par3",
+      "fft16.vol01+2.par3",
+      "fft16.vol03+4.par3",
+      "fft16.vol07+8.par3",
+      "fft16.vol15+1.par3"
+    ]
+  },
+  {
+    "feature": "interleaved",
+    "files": [
+      "interleaved.par3",
+      "interleaved.vol0+1.par3",
+      "interleaved.vol1+2.par3"
+    ]
+  }
+]

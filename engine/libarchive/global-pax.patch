@@ -1,0 +1,420 @@
+--- a/libarchive/archive_read_support_format_tar.c
++++ b/libarchive/archive_read_support_format_tar.c
+@@ -117,7 +117,16 @@
+ 	int hole;
+ };
+ 
++#define TAR_GLOBAL_KEYS 12
+ struct tar {
++ struct archive_string global_values[TAR_GLOBAL_KEYS];
++ struct archive_string local_values[TAR_GLOBAL_KEYS];
++ unsigned global_present;
++ unsigned local_present;
++ uint64_t metadata_bytes;
++ uint64_t metadata_headers;
++ uint64_t sparse_metadata_bytes;
++ unsigned sparse_forms;
+ 	struct archive_string	 entry_pathname;
+ 	/* For "GNU.sparse.name" and other similar path extensions. */
+ 	struct archive_string	 entry_pathname_override;
+@@ -313,6 +322,7 @@
+ 	archive_string_free(&tar->entry_linkpath);
+ 	archive_string_free(&tar->line);
+ 	archive_string_free(&tar->localname);
++	for (size_t i = 0; i < TAR_GLOBAL_KEYS; ++i) { archive_string_free(&tar->global_values[i]); archive_string_free(&tar->local_values[i]); }
+ 	free(tar);
+ 	a->format->data = NULL;
+ 	return (ARCHIVE_OK);
+@@ -558,14 +568,33 @@
+ 	}
+ 
+ 	r = tar_read_header(a, tar, entry, &unconsumed);
+-
+-	tar_flush_unconsumed(a, &unconsumed);
++	if (r != ARCHIVE_OK) return r;
++	if ((tar->size_fields & (TAR_SIZE_GNU_SPARSE_REALSIZE | TAR_SIZE_GNU_SPARSE_SIZE)) ==
++	    (TAR_SIZE_GNU_SPARSE_REALSIZE | TAR_SIZE_GNU_SPARSE_SIZE) &&
++	    tar->GNU_sparse_realsize != tar->GNU_sparse_size) {
++		archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++		    "Conflicting sparse TAR logical sizes");
++		return ARCHIVE_FATAL;
++	}
++	if (tar_flush_unconsumed(a, &unconsumed) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 
+ 	/*
+ 	 * "non-sparse" files are really just sparse files with
+ 	 * a single block.
+ 	 */
+ 	if (tar->sparse_list == NULL) {
++		/* Keep descriptive sparse provenance when an all-hole map has no
++		 * nonempty data nodes. This does not materialize a host sparse file. */
++		if (tar->filetype == 'S' || (tar->size_fields &
++		    (TAR_SIZE_GNU_SPARSE_REALSIZE | TAR_SIZE_GNU_SPARSE_SIZE))) {
++			if (tar->entry_bytes_remaining != 0) {
++				archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++				    "Sparse TAR empty map has unexpected packed data");
++				return ARCHIVE_FATAL;
++			}
++			if (archive_entry_size(entry) > 0)
++				archive_entry_sparse_add_entry(entry, archive_entry_size(entry), 0);
++		}
+ 		if (gnu_add_sparse_entry(a, tar, 0, tar->entry_bytes_remaining)
+ 		    != ARCHIVE_OK)
+ 			return (ARCHIVE_FATAL);
+@@ -573,6 +602,25 @@
+ 		struct sparse_block *sb;
+ 		size_t added = 0;
+ 		int count;
++		int64_t packed = 0, previous_end = 0;
++		for (sb = tar->sparse_list; sb != NULL; sb = sb->next) {
++			if (sb->offset < previous_end || sb->remaining < 0 ||
++			    sb->offset > archive_entry_size(entry) ||
++			    sb->remaining > archive_entry_size(entry) - sb->offset ||
++			    packed > INT64_MAX - sb->remaining) {
++				archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++				    "Invalid sparse TAR extent bounds");
++				return ARCHIVE_FATAL;
++			}
++			previous_end = sb->offset + sb->remaining;
++			/* Solaris holes are physically stored; GNU holes have no nodes. */
++			packed += sb->remaining;
++		}
++		if (packed != tar->entry_bytes_remaining) {
++			archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++			    "Sparse TAR map does not match packed byte count");
++			return ARCHIVE_FATAL;
++		}
+ 
+ 		for (sb = tar->sparse_list; sb != NULL; sb = sb->next) {
+ 			if (!sb->hole) {
+@@ -715,6 +763,167 @@
+ 	archive_string_empty(&tar->entry_linkpath);
+ }
+ 
++/* Bounded global defaults reuse the upstream PAX record decoder and header
++ * framing. Only attributes previously supported by the application are added.
++ * Sparse and other vendor-specific global attributes remain rejected. */
++static int
++tar_metadata_charge(struct archive_read *a, struct tar *tar, int64_t size)
++{
++ if (size < 0 || (uint64_t)size > 64 * 1024 * 1024 - tar->metadata_bytes) {
++  archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++      "TAR cumulative extension metadata budget exceeded");
++  return ARCHIVE_FATAL;
++ }
++ tar->metadata_bytes += (uint64_t)size;
++ return ARCHIVE_OK;
++}
++
++static int
++tar_metadata_admit(struct archive_read *a, struct tar *tar, int64_t size)
++{
++ if (tar->metadata_headers >= 250000) {
++  archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++      "TAR extension header work budget exceeded");
++  return ARCHIVE_FATAL;
++ }
++ ++tar->metadata_headers;
++ return tar_metadata_charge(a, tar, size);
++}
++
++static int
++tar_sparse_admit(struct archive_read *a, struct tar *tar, int64_t size)
++{
++ if (size < 0 || (uint64_t)size > 1024 * 1024 - tar->sparse_metadata_bytes) {
++  archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++      "TAR sparse map metadata budget exceeded");
++  return ARCHIVE_FATAL;
++ }
++ tar->sparse_metadata_bytes += (uint64_t)size;
++ return tar_metadata_charge(a, tar, size);
++}
++
++static int
++tar_sparse_form(struct archive_read *a, struct tar *tar, unsigned form)
++{
++ unsigned conflicts = form == 1 ? (2|4|16) : form == 2 ? (1|4|8) :
++     form == 4 ? (1|2|8) : form == 8 ? (2|4|16) : (1|8);
++ if (tar->sparse_forms & conflicts) {
++  archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++      "Conflicting sparse TAR map/version attributes");
++  return ARCHIVE_FATAL;
++ }
++ tar->sparse_forms |= form;
++ return ARCHIVE_OK;
++}
++
++static int
++tar_global_key(const char *key, size_t length)
++{
++ static const char *keys[TAR_GLOBAL_KEYS] = {
++  "path", "linkpath", "size", "uid", "gid", "uname", "gname",
++  "mtime", "atime", "ctime", "hdrcharset", "SCHILY.mode"
++ };
++ for (int i = 0; i < TAR_GLOBAL_KEYS; ++i)
++  if (strlen(keys[i]) == length && memcmp(keys[i], key, length) == 0) return i;
++ return -1;
++}
++
++static int
++tar_global_number(const struct archive_string *value, int base, int64_t *number)
++{
++ int64_t n = 0;
++ if (value->length == 0) return ARCHIVE_FATAL;
++ for (size_t i = 0; i < value->length; ++i) {
++  unsigned char digit = (unsigned char)value->s[i];
++  if (digit < '0' || digit >= '0' + base) return ARCHIVE_FATAL;
++  digit -= '0';
++  if (n > (INT64_MAX - digit) / base) return ARCHIVE_FATAL;
++  n = n * base + digit;
++ }
++ *number = n;
++ return ARCHIVE_OK;
++}
++
++static void
++tar_global_time(const struct archive_string *value, int64_t *seconds, long *nanos)
++{
++ pax_time(value->s, value->length, seconds, nanos);
++ /* Upstream signs only the integral part; POSIX timestamps sign the fraction
++  * too. Normalize into the conventional floor-seconds/nonnegative-nanos pair. */
++ if (value->s[0] == '-' && *nanos > 0 && *seconds != INT64_MIN) {
++  --*seconds;
++  *nanos = 1000000000L - *nanos;
++ }
++}
++
++static int
++tar_global_validate(struct archive_read *a, int key,
++    const struct archive_string *value)
++{
++ int64_t number;
++ long nanos;
++ if (value->length && memchr(value->s, '\0', value->length) != NULL) goto invalid;
++ if (value->length == 0) return ARCHIVE_OK;
++ if (key >= 2 && key <= 4) {
++  if (tar_global_number(value, 10, &number) != ARCHIVE_OK) goto invalid;
++ } else if (key >= 7 && key <= 9) {
++  if (value->length > 128) goto invalid;
++  size_t pos = value->s[0] == '-' ? 1 : 0, digits = 0, fraction = 0;
++  while (pos < value->length && value->s[pos] >= '0' && value->s[pos] <= '9') { ++pos; ++digits; }
++  if (!digits) goto invalid;
++  if (pos < value->length && value->s[pos] == '.') {
++   ++pos;
++   while (pos < value->length && value->s[pos] >= '0' && value->s[pos] <= '9') { ++pos; ++fraction; }
++   if (!fraction) goto invalid;
++  }
++  if (pos != value->length) goto invalid;
++  tar_global_time(value, &number, &nanos);
++  if (number == INT64_MIN) goto invalid;
++ } else if (key == 10) {
++  if (value->length != 23 ||
++      memcmp(value->s, "ISO-IR 10646 2000 UTF-8", 23) != 0) goto invalid;
++ } else if (key == 11) {
++  if (tar_global_number(value, 8, &number) != ARCHIVE_OK || number > 07777) goto invalid;
++ }
++ return ARCHIVE_OK;
++invalid:
++ archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT,
++     "Invalid or unsupported global PAX value");
++ return ARCHIVE_FATAL;
++}
++
++static int
++tar_global_apply(struct archive_read *a, struct tar *tar, struct archive_entry *entry)
++{
++ for (int key = 0; key < TAR_GLOBAL_KEYS; ++key) {
++  unsigned bit = 1U << key;
++  if (!((tar->global_present | tar->local_present) & bit)) continue;
++  const struct archive_string *value = (tar->local_present & bit) ? &tar->local_values[key] : &tar->global_values[key];
++  /* Last local record wins; an empty value suppresses the global default
++   * and leaves the base header field unset for upstream fallback. */
++  if (!value->length) continue;
++  int64_t number = 0; long nanos = 0;
++  if (tar_global_validate(a, key, value) != ARCHIVE_OK) return ARCHIVE_FATAL;
++  switch (key) {
++   case 0: if (archive_strlen(&tar->entry_pathname_override)) break; if (!archive_entry_update_pathname_utf8(entry, value->s)) { archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Invalid UTF-8 global PAX text"); return ARCHIVE_FATAL; }; break;
++   case 1: if (!archive_entry_update_link_utf8(entry, value->s)) { archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Invalid UTF-8 global PAX text"); return ARCHIVE_FATAL; }; break;
++   case 2:
++    tar_global_number(value, 10, &number);
++    tar->pax_size = number; tar->size_fields |= TAR_SIZE_PAX_SIZE; break;
++   case 3: tar_global_number(value, 10, &number); archive_entry_set_uid(entry, number); break;
++   case 4: tar_global_number(value, 10, &number); archive_entry_set_gid(entry, number); break;
++   case 5: if (!archive_entry_update_uname_utf8(entry, value->s)) { archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Invalid UTF-8 global PAX text"); return ARCHIVE_FATAL; }; break;
++   case 6: if (!archive_entry_update_gname_utf8(entry, value->s)) { archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Invalid UTF-8 global PAX text"); return ARCHIVE_FATAL; }; break;
++   case 7: tar_global_time(value, &number, &nanos); archive_entry_set_mtime(entry, number, nanos); break;
++   case 8: tar_global_time(value, &number, &nanos); archive_entry_set_atime(entry, number, nanos); break;
++   case 9: tar_global_time(value, &number, &nanos); archive_entry_set_ctime(entry, number, nanos); break;
++   case 10: tar->pax_hdrcharset_utf8 = 1; break;
++   case 11: tar_global_number(value, 8, &number); archive_entry_set_perm(entry, (mode_t)number); break;
++  }
++ }
++ return ARCHIVE_OK;
++}
++
+ /*
+  * This function reads and interprets all of the headers associated
+  * with a single entry.
+@@ -741,6 +950,9 @@
+ 	static const int32_t seen_mac_metadata = 512;
+ 
+ 	tar_reset_header_state(tar);
++	tar->local_present = 0;
++	tar->sparse_metadata_bytes = 0;
++	tar->sparse_forms = 0;
+ 
+ 	/* Ensure format is set. */
+ 	if (a->archive.archive_format_name == NULL) {
+@@ -838,11 +1050,6 @@
+ 			err2 = header_Solaris_ACL(a, tar, entry, h, unconsumed);
+ 			break;
+ 		case 'g': /* POSIX-standard 'g' header. */
+-			if (seen_headers & seen_g_header) {
+-				archive_set_error(&a->archive, ARCHIVE_ERRNO_MISC,
+-						  "Redundant 'g' header");
+-				return (ARCHIVE_FATAL);
+-			}
+ 			seen_headers |= seen_g_header;
+ 			a->archive.archive_format = ARCHIVE_FORMAT_TAR_PAX_INTERCHANGE;
+ 			a->archive.archive_format_name = "POSIX pax interchange format";
+@@ -905,6 +1112,7 @@
+ 			err2 = header_pax_extension(a, tar, entry, h, unconsumed);
+ 			break;
+ 		default: /* Regular header: Legacy tar, GNU tar, or ustar */
++			if (tar_global_apply(a, tar, entry) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 			gnuheader = (const struct archive_entry_header_gnutar *)h;
+ 			if (memcmp(gnuheader->magic, "ustar  \0", 8) == 0) {
+ 				a->archive.archive_format = ARCHIVE_FORMAT_TAR_GNUTAR;
+@@ -1303,9 +1511,9 @@
+ 	const struct archive_entry_header_ustar *header;
+ 	int r;
+ 
+-	(void)tar; /* UNUSED */
+ 	header = (const struct archive_entry_header_ustar *)h;
+ 	size  = tar_atol(header->size, sizeof(header->size));
++	if (tar_metadata_admit(a, tar, size) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 	if (size < 0 || size > entry_limit) {
+ 		archive_set_error(&a->archive, EINVAL,
+ 		    "Special header has invalid size: %lld",
+@@ -1989,6 +2197,7 @@
+ 
+ 	header = (const struct archive_entry_header_ustar *)h;
+ 	ext_size  = tar_atol(header->size, sizeof(header->size));
++	if (tar_metadata_admit(a, tar, ext_size) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 	if (ext_size > entry_limit) {
+ 		return (ARCHIVE_FATAL);
+ 	}
+@@ -2125,7 +2334,16 @@
+ 			return (ARCHIVE_WARN);
+ 		}
+ 
+-		if (global) {
++		int global_key = tar_global_key(attr_name.s, archive_strlen(&attr_name));
++		if (global && global_key >= 0) {
++			struct archive_string *value = &tar->global_values[global_key];
++			r = read_bytes_to_string(a, value, value_length - 1, unconsumed);
++			if (r == ARCHIVE_OK) r = tar_global_validate(a, global_key, value);
++			if (r == ARCHIVE_OK) {
++				if (value->length) tar->global_present |= 1U << global_key;
++				else tar->global_present &= ~(1U << global_key);
++			}
++		} else if (global) {
+ 			if (pax_global_attribute_unsupported(attr_name.s,
+ 				archive_strlen(&attr_name))) {
+ 				archive_set_error(&a->archive,
+@@ -2140,8 +2358,13 @@
+ 			 * ignoring it here changes nothing. */
+ 			__archive_read_consume(a, value_length - 1);
+ 			r = ARCHIVE_OK;
++		} else if (global_key >= 0) {
++			struct archive_string *value = &tar->local_values[global_key];
++			tar->local_present |= 1U << global_key;
++			r = read_bytes_to_string(a, value, value_length - 1, unconsumed);
++			if (r == ARCHIVE_OK) r = tar_global_validate(a, global_key, value);
+ 		} else {
+-			/* pax_attribute will consume value_length - 1 */
++			/* Upstream owns sparse/vendor attribute decoding and framing. */
+ 			r = pax_attribute(a, tar, entry, attr_name.s, archive_strlen(&attr_name), value_length - 1, unconsumed);
+ 		}
+ 		ext_size -= value_length - 1;
+@@ -2199,6 +2422,15 @@
+ 			    SCONV_SET_OPT_UTF8_LIBARCHIVE2X);
+ 	}
+ 
++	/* PAX text fields cannot contain embedded NUL bytes. */
++	struct archive_string *text_fields[] = {&tar->entry_pathname,
++	    &tar->entry_pathname_override, &tar->entry_uname,
++	    &tar->entry_gname, &tar->entry_linkpath};
++	for (size_t i = 0; i < sizeof(text_fields) / sizeof(text_fields[0]); ++i)
++		if (text_fields[i]->length && memchr(text_fields[i]->s, '\0', text_fields[i]->length) != NULL) {
++			archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "NUL in PAX text field");
++			return ARCHIVE_FATAL;
++		}
+ 	/* Pathname */
+ 	pas = NULL;
+ 	if (archive_strlen(&(tar->entry_pathname_override)) > 0) {
+@@ -2505,6 +2737,7 @@
+ 				}
+ 				else if (key_length == 6 && memcmp(key, "offset", 6) == 0) {
+ 					/* GNU.sparse.offset */
++					if (tar_sparse_form(a, tar, 2) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 					if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK) {
+ 						tar->sparse_offset = t;
+ 						if (tar->sparse_numbytes != -1) {
+@@ -2520,6 +2753,7 @@
+ 				}
+ 				else if (key_length == 8 && memcmp(key, "numbytes", 8) == 0) {
+ 					/* GNU.sparse.numbytes */
++					if (tar_sparse_form(a, tar, 2) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 					if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK) {
+ 						tar->sparse_numbytes = t;
+ 						if (tar->sparse_offset != -1) {
+@@ -2549,6 +2783,7 @@
+ 				/* GNU "0.1" sparse pax format. */
+ 				else if (key_length == 3 && memcmp(key, "map", 3) == 0) {
+ 					/* GNU.sparse.map */
++					if (tar_sparse_form(a, tar, 1) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 					tar->sparse_gnu_major = 0;
+ 					tar->sparse_gnu_minor = 1;
+ 					if (value_length > sparse_map_limit) {
+@@ -2578,18 +2813,22 @@
+ 					/* GNU.sparse.major */
+ 					if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK
+ 					    && t >= 0
+-					    && t <= 10) {
++					    && t <= 1) {
++						if (t == 1 && tar_sparse_form(a, tar, 4) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 						tar->sparse_gnu_major = (int)t;
+ 					}
++					else if (err == ARCHIVE_OK) { archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Unsupported sparse TAR version"); return ARCHIVE_FATAL; }
+ 					return (err);
+ 				}
+ 				else if (key_length == 5 && memcmp(key, "minor", 5) == 0) {
+ 					/* GNU.sparse.minor */
+ 					if ((err = pax_attribute_read_number(a, value_length, &t)) == ARCHIVE_OK
+ 					    && t >= 0
+-					    && t <= 10) {
++					    && t <= 1) {
++						if (tar_sparse_form(a, tar, t == 1 ? 8 : 16) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 						tar->sparse_gnu_minor = (int)t;
+ 					}
++					else if (err == ARCHIVE_OK) { archive_set_error(&a->archive, ARCHIVE_ERRNO_FILE_FORMAT, "Unsupported sparse TAR version"); return ARCHIVE_FATAL; }
+ 					return (err);
+ 				}
+ 				else if (key_length == 4 && memcmp(key, "name", 4) == 0) {
+@@ -3308,6 +3547,7 @@
+ 		return (ARCHIVE_OK);
+ 
+ 	do {
++		if (tar_sparse_admit(a, tar, 512) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 		if (tar_flush_unconsumed(a, unconsumed) != ARCHIVE_OK) {
+ 			return (ARCHIVE_FATAL);
+ 		}
+@@ -3449,6 +3689,7 @@
+ 			(ssize_t)tar_min(*remaining, 100), unconsumed);
+ 		if (bytes_read <= 0)
+ 			return (ARCHIVE_FATAL);
++		if (tar_sparse_admit(a, tar, bytes_read) != ARCHIVE_OK) return ARCHIVE_FATAL;
+ 		*remaining -= bytes_read;
+ 	} while (p[0] == '#');
+ 

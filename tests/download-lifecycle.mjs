@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+import ts from 'typescript';
+let registrations=0,port;
+const first={state:'activated',postMessage(data,ports){if(data.token){port=ports[1];port.postMessage({ready:true});}}};
+const second={...first};let active=first;
+const exports={};const context={exports,window:{},isSecureContext:true,navigator:{serviceWorker:{register:async()=>{registrations++;return {active};}}},TransformStream,MessageChannel,Promise,Error,crypto,document:{createElement:()=>({remove(){}}),body:{append(){port.postMessage({started:true});}}},setTimeout,clearTimeout,addEventListener(){},removeEventListener(){}};
+vm.runInNewContext(ts.transpileModule(await readFile(new URL('../engine/download.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,context);
+assert.equal((await exports.streamDownloadCapability()).available,true);assert.equal(registrations,1,'startup installs worker for later offline use');
+const initial=await exports.createDownload('a.bin');initial.release();assert.equal(registrations,1);
+first.state='redundant';active=second;
+const updated=await exports.createDownload('b.bin');updated.release();assert.equal(registrations,2,'stale redundant worker must be replaced without reloading app');
+port.close();console.log('Download lifecycle passed: upfront install, active reuse, redundant worker refresh, route startup acknowledgement');

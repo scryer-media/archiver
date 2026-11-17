@@ -1,0 +1,24 @@
+import assert from 'node:assert/strict';
+import {cachedInputReads} from '../engine/input.ts';
+const W=4*1024*1024,size=100_000_000_083;
+let reads=0,largest=0,fail=false,short=false;
+const source={slice(start,end){assert.ok(Number.isSafeInteger(start)&&Number.isSafeInteger(end));assert.ok(end<=size);return{start,end};}};
+const workerfs={reader:{readAsArrayBuffer({start,end}){reads++;largest=Math.max(largest,end-start);if(fail)throw Error('fixture source read failed');const b=new Uint8Array(end-start-(short?1:0));for(let i=0;i<b.length;i++)b[i]=(start+i)%251;return b.buffer;}}};
+const {read,metrics}=cachedInputReads(workerfs),node={size,contents:source},stream={node};
+const check=(position,length,offset=0)=>{const b=new Uint8Array(offset+length+3).fill(255),count=read(stream,b,offset,length,position);assert.equal(count,Math.max(0,Math.min(length,size-position)));for(let i=0;i<count;i++)assert.equal(b[offset+i],(position+i)%251);assert.equal(b[offset+count],255);return count;};
+for(let i=0;i<64;i++)check(i*65536,65536);
+assert.equal(reads,1,'64 decoder reads share one backing read');
+check(W-5,12,3);assert.equal(reads,2,'cross-window read remains exact');
+check(0,12);assert.equal(reads,2,'backward seek uses retained window');
+for(const position of [2**31-3,2**32-3,85_581_627_392,size-13])check(position,27);
+assert.equal(check(size,20),0);assert.equal(check(size+100,1),0);check(0,0);
+assert.ok(largest<=W);assert.ok(metrics.peakCacheBytes<=2*W);assert.ok(metrics.cacheHitBytes>=63*65536);
+assert.throws(()=>check(-1,1),/Invalid/);assert.throws(()=>read(stream,new Uint8Array(1),0,2,0),/Invalid/);
+fail=true;assert.throws(()=>check(W*20,1),/fixture source read failed/);fail=false;short=true;assert.throws(()=>check(W*21,1),/incomplete/);short=false;
+check(W*21,1);
+let nodeReads=0;
+const distinct=cachedInputReads({reader:{readAsArrayBuffer(chunk){nodeReads++;return new Uint8Array(chunk.end-chunk.start).fill(chunk.value).buffer;}}});
+const nodes=[17,29,43].map(value=>({size:W,contents:{slice(start,end){return{start,end,value};}}}));
+for(const node of [...nodes,nodes[0]]){const b=new Uint8Array(1);assert.equal(distinct.read({node},b,0,1,0),1);assert.equal(b[0],node.contents.slice(0,1).value);}
+assert.equal(nodeReads,4,'third distinct node evicts LRU; same offsets never alias source identity');assert.ok(distinct.metrics.peakCacheBytes<=2*W);
+console.log(JSON.stringify({status:'PASS',scope:'Synthetic immutable source; virtual100GB offsets, no host payload',sequentialReadReduction:64,largestBackingRead:largest,metrics}));

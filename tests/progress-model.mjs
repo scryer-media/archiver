@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {ProgressTracker,duration} from '../src/progress.ts';
+const model=new ProgressTracker();model.start(0);
+for(const [time,bytes] of [[0,0],[1000,100],[2000,200]])model.update({phase:'extract',message:'Extracting',processedBytes:bytes,totalBytes:1000,unit:'output'},time);
+let view=model.view(2000);assert.equal(view.percent,20);assert.equal(view.rate,100);assert.equal(view.etaSeconds,8);
+view=model.view(3000);assert.equal(view.sample.processedBytes,200);assert.equal(view.percent,20);assert.equal(view.elapsedSeconds,3);
+view=model.view(8000);assert.equal(view.rate,undefined);assert.equal(view.etaSeconds,undefined);assert.equal(view.sample.processedBytes,200);
+model.update({phase:'commit',message:'Finalizing destination files',outputBytes:200},8100);view=model.view(8100);assert.equal(view.percent,undefined);assert.equal(view.rate,undefined);assert.equal(view.etaSeconds,undefined);assert.equal(view.sample.outputBytes,200);assert.equal(view.stalled,false,'A new phase must not inherit old stalled time');
+model.start(9000);view=model.view(9000);assert.equal(view.elapsedSeconds,0);assert.equal(view.sample.outputBytes,undefined);assert.equal(view.sample.processedBytes,undefined);
+for(const [time,bytes] of [[9000,0],[10000,10],[11000,1000]])model.update({phase:'create',message:'Compressing',processedBytes:bytes,totalBytes:10000},time);
+assert.equal(model.view(11000).etaSeconds,undefined,'Unstable rate must not imply a reliable ETA');
+model.update({phase:'parity',message:'Creating recovery data',percent:25},12000);view=model.view(12000);assert.equal(view.percent,25);assert.equal(view.rate,undefined);assert.equal(view.etaSeconds,undefined);
+model.update({phase:'parity',message:'Unknown total',processedBytes:400,writtenBytes:200},13000);view=model.view(13000);assert.equal(view.percent,undefined);assert.equal(view.sample.outputBytes,200);
+model.update({phase:'parity',message:'Counter restarted',processedBytes:1,totalBytes:100},14000);assert.equal(model.view(14000).rate,undefined);
+assert.equal(duration(0),'0s');assert.equal(duration(61),'1m 1s');assert.equal(duration(3661),'1h 1m');
+console.log('Progress model: measured rate/ETA, stalled counters, unknown totals, finalization, phase resets and retry reset passed');

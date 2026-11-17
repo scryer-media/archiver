@@ -1,0 +1,21 @@
+{
+  "name": "scryer-archive",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "node scripts/test.mjs",
+    "check": "tsc --noEmit && npm test",
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build && node scripts/build-offline.mjs",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^7.2.2"
+  },
+  "dependencies": {
+    "@zip.js/zip.js": "^2.25.0",
+    "file-type": "22.3.0"
+  }
+}

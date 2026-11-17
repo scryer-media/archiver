@@ -1,0 +1,17 @@
+--- a/libarchive/archive_read_support_format_tar.c
++++ b/libarchive/archive_read_support_format_tar.c
+@@ -2070,11 +2070,11 @@
+ 	/* This cannot be raised to larger than 8GiB without
+ 	 * exceeding the maximum size for a standard ustar
+ 	 * entry. */
+-	const int64_t ext_size_limit = 1024 * 1024 * (int64_t)1024;
+-	/* Maximum size for a single line/attr: 100 million characters */
++	const int64_t ext_size_limit = 1024 * (int64_t)1024;
++	/* Browser policy: at most 1 MiB per extension body and line. */
+ 	/* This cannot be raised to more than 2GiB without exceeding
+ 	 * a `size_t` on 32-bit platforms. */
+-	const size_t max_parsed_line_length = 99999999ULL;
++	const size_t max_parsed_line_length = 1024 * 1024;
+ 	/* Largest attribute prolog:  size + name. */
+ 	const size_t max_size_name = 512;
+ 

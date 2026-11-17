@@ -1,0 +1,30 @@
+[
+  {
+    "label": "pax",
+    "longName": "nested/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/unicode-\u8cc7\u6599-payload.txt",
+    "files": [
+      {
+        "name": "nested/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/unicode-\u8cc7\u6599-payload.txt",
+        "text": "long path payload\n"
+      },
+      {
+        "name": "after-metadata.txt",
+        "text": "next regular member\n"
+      }
+    ]
+  },
+  {
+    "label": "gnu",
+    "longName": "nested/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/unicode-\u8cc7\u6599-payload.txt",
+    "files": [
+      {
+        "name": "nested/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/long-directory/unicode-\u8cc7\u6599-payload.txt",
+        "text": "long path payload\n"
+      },
+      {
+        "name": "after-metadata.txt",
+        "text": "next regular member\n"
+      }
+    ]
+  }
+]

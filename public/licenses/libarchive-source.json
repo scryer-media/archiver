@@ -1,0 +1,27 @@
+{
+  "version": "3.8.11",
+  "url": "https://www.libarchive.org/downloads/libarchive-3.8.11.tar.xz",
+  "sha256": "a3dc0872b1b39da34dc18ef1b944f0f11ffd37425d70ae04be679279f1cf43d2",
+  "bytes": 6754236,
+  "license": "BSD-2-Clause (core); preserve upstream COPYING for component notices",
+  "patches": [
+    {
+      "file": "resource.patch",
+      "sha256": "2202c3e8126ad1f47beaeb8a0d16b8c9c43df5731bef4c7778968f47cdf1116d"
+    },
+    {
+      "file": "global-pax.patch",
+      "sha256": "35007c2584d29c333cce18d75465ecea10465a064e171ceab535e35726b42f18"
+    },
+    {
+      "file": "utf8.patch",
+      "sha256": "f7edf54d2388bfd07711c1bdcd50bf212bb8cd3000b021513f82873a41f9d4a4"
+    },
+    {
+      "file": "pax-time.patch",
+      "sha256": "3c9bb387c5d66c9337f2e3f9b81adab7e386a1c3810ce41431b30f692d3c66d8"
+    }
+  ],
+  "integration": "TAR-only reader/PAX writer; no external filters or host unpack APIs",
+  "patchDirectory": "engine/libarchive"
+}

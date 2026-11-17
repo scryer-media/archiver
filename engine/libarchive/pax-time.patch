@@ -1,0 +1,19 @@
+--- a/libarchive/archive_write_set_format_pax.c
++++ b/libarchive/archive_write_set_format_pax.c
+@@ -271,6 +271,8 @@
+ {
+ 	int digit, i;
+ 	char *t;
++	int negative_fraction = sec < 0 && nanos > 0;
++	if (negative_fraction) { ++sec; nanos = 1000000000UL - nanos; }
+ 	/*
+ 	 * Note that each byte contributes fewer than 3 base-10
+ 	 * digits, so this will always be big enough.
+@@ -297,6 +299,7 @@
+ 		*--t = '.';
+ 	}
+ 	t = format_int(t, sec);
++	if (negative_fraction && sec == 0) *--t = '-';
+ 
+ 	add_pax_attr(as, key, t);
+ }

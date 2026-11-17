@@ -1,0 +1,25 @@
+import {mkdir,writeFile,readFile} from 'node:fs/promises';
+import {pathToFileURL} from 'node:url';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {createHash} from 'node:crypto';
+const repo=process.env.HARNESS_REPO||process.cwd(),url=process.env.APP_URL||'http://127.0.0.1:4185',endpoint=process.env.ENDPOINT||'http://127.0.0.1:9230';const {openBrowserSession}=await import(pathToFileURL(repo+'/tests/lib/browser-session.mjs'));
+const root='/private/tmp/archive-tar-native-download-'+Date.now();await mkdir(root);const report={status:'RUNNING',root,url};let page;
+try{page=await openBrowserSession(endpoint,url);await page.call('Browser.setDownloadBehavior',{behavior:'allowAndName',downloadPath:root,eventsEnabled:true});
+ report.api=await page.evaluate(String.raw`(async()=>{const{ArchiveEngine}=await import('/src/tool-engine.ts');const engine=new ArchiveEngine(p=>(window.tarProgress??=[]).push(p));window.tarEngine=engine;let gzipWasmCalls=0;const original=engine.native.create;engine.native.create=function(files,options){if(options?.format==='gz')gzipWasmCalls++;return original.call(this,files,options);};const files=[new File(['first-'.repeat(128)],'a.txt'),new File(['second-'.repeat(64)],'b.txt')],options={format:'tar.gz',directories:['empty'],streamBackend:'auto'};const prepared=await engine.create(files,options);if(prepared.files.length!==1)throw Error('Missing prepared TAR.GZ');const bytes=new Uint8Array(await prepared.files[0].blob.arrayBuffer());if(bytes[0]!==31||bytes[1]!==139)throw Error('Prepared output is not GZIP');if(bytes.length>262144)throw Error('Unexpected small fixture size');const streamed=await engine.create(files,{...options,delivery:'download'});if(!streamed.downloadSent||streamed.files.length!==0)throw Error('Download result not truthful');if(gzipWasmCalls!==0)throw Error('Eligible outer GZIP failed to use Browser');if(!(window.tarProgress||[]).some(p=>p.phase.includes('browser-compress')))throw Error('Missing Browser compression progress');const root=await navigator.storage.getDirectory();let retainedFiles=0;for(const lease of engine.leases){try{const directory=await root.getDirectoryHandle(lease.name),file=await(await directory.getFileHandle('0')).getFile(),prefix=new Uint8Array(await file.slice(0,2).arrayBuffer());if(prefix[0]!==31||prefix[1]!==139)throw Error('Intermediate uncompressed TAR retained');retainedFiles++;}catch(error){if(error.name!=='NotFoundError')throw error;}}return{prepared:btoa(String.fromCharCode(...bytes)),streamed,gzipWasmCalls,retainedFiles,phases:[...new Set(window.tarProgress.map(p=>p.phase))]};})()`,60000);
+ await writeFile(root+'/prepared.tar.gz',Buffer.from(report.api.prepared,'base64'));delete report.api.prepared;
+ const end=Date.now()+30000;let download;while(Date.now()<end){const begin=page.events.find(e=>e.method==='Browser.downloadWillBegin');if(begin){const last=page.events.filter(e=>e.method==='Browser.downloadProgress'&&e.params.guid===begin.params.guid).at(-1);if(last?.params.state==='canceled')throw Error('Browser canceled compressed TAR download');if(last?.params.state==='completed'){download={...begin.params,...last.params};break;}}await new Promise(r=>setTimeout(r,100));}if(!download)throw Error('Missing completed download');report.download=download;const streamed=await readFile(root+'/'+download.guid);if(streamed[0]!==31||streamed[1]!==139)throw Error('Download is not GZIP');await writeFile(root+'/streamed.tar.gz',streamed);
+ const script=String.raw`import tarfile,hashlib,json,sys
+result=[]
+expected={'a.txt':b'first-'*128,'b.txt':b'second-'*64}
+for path in sys.argv[1:]:
+ with tarfile.open(path,'r:gz') as archive:
+  members=archive.getmembers();actual={m.name:m for m in members};assert set(actual)==set(expected)|{'empty'},list(actual);assert actual['empty'].isdir()
+  files=[]
+  for name,data in expected.items():
+   member=actual[name];assert member.isfile();content=archive.extractfile(member).read();assert content==data;files.append({'name':name,'bytes':len(content),'sha256':hashlib.sha256(content).hexdigest()})
+  result.append({'archive':path.rsplit('/',1)[-1],'files':files,'emptyDirectory':True})
+print(json.dumps(result))`;
+ const verified=await promisify(execFile)('python3',['-c',script,root+'/prepared.tar.gz',root+'/streamed.tar.gz'],{timeout:30000});report.independent=JSON.parse(verified.stdout);report.status='VERIFYING_TEARDOWN';
+}catch(error){report.status='FAIL';report.error=String(error);process.exitCode=1;}
+finally{if(page){try{report.cleaned=await page.evaluate('window.tarEngine?.dispose()');await page.close();report.pageClosed=true;}catch(error){report.cleanupError=String(error);report.status='FAIL';process.exitCode=1;}}if(report.status==='VERIFYING_TEARDOWN'&&report.cleaned&&report.pageClosed)report.status='PASS';else if(report.status==='VERIFYING_TEARDOWN'){report.status='FAIL';process.exitCode=1;}await writeFile(root+'/evidence.json',JSON.stringify(report,null,2));console.log(JSON.stringify({status:report.status,evidence:root+'/evidence.json',error:report.error}));}

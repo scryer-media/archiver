@@ -1,0 +1,7 @@
+import {ArchiveEngine} from "../src/tool-engine";
+const engine=new ArchiveEngine();const results:unknown[]=[];
+const report=(done=false)=>document.querySelector("#results")!.textContent=JSON.stringify({done,results},null,2);
+const equal=async(a:Blob,b:Blob)=>{if(a.size!==b.size)throw Error("Size mismatch");for(let offset=0;offset<a.size;offset+=1048576){const digests=await Promise.all([a,b].map(async file=>new Uint8Array(await crypto.subtle.digest("SHA-256",await file.slice(offset,offset+1048576).arrayBuffer()))));if(!digests[0].every((v,i)=>v===digests[1][i]))throw Error("Chunk digest mismatch at "+offset);}};
+document.querySelector("#input")!.addEventListener("change",async event=>{const input=(event.target as HTMLInputElement).files![0];for(const format of (new URL(location.href).searchParams.get("formats")?.split(",")||["tar","zip","7z"])){const start=performance.now();try{const made=await engine.create([input],{format});const archive=new File([made.files[0].blob],made.files[0].name);const extracted=await engine.extract([archive]);await equal(input,extracted.files[0].blob);results.push({format,ok:true,inputBytes:input.size,archiveBytes:archive.size,outputBytes:extracted.files[0].blob.size,metrics:extracted.metrics,seconds:Math.round((performance.now()-start)/1000)});}catch(error){results.push({format,ok:false,error:String(error)});}report();}await engine.dispose();report(true);});
+
+document.documentElement.dataset.ready="true";

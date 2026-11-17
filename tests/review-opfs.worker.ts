@@ -1,0 +1,20 @@
+import { DiskVolume } from '../engine/opfs';
+const check=(value:unknown,message:string)=>{if(!value)throw Error(message);};
+self.onmessage=async()=>{let stage='load';try{
+ const url=new URL('/engine/archive-engine.js',location.origin).href;const {default:createModule}=await import(/* @vite-ignore */ url);
+ const module=await createModule({locateFile:(name:string)=>'/engine/'+name,print:()=>{},printErr:()=>{}}),fs=module.FS;
+ let bytes=new Uint8Array(0),shortWrite=false,shortRead=false,failTruncate=false;
+ const access={truncate(size:number){if(failTruncate)throw Error('injected truncate');const next=new Uint8Array(size);next.set(bytes.subarray(0,size));bytes=next;},write(data:Uint8Array,{at}:{at:number}){const amount=shortWrite?data.length-1:data.length;bytes.set(data.subarray(0,amount),at);return amount;},read(target:Uint8Array,{at}:{at:number}){const amount=shortRead?target.length-1:target.length;target.set(bytes.subarray(at,at+amount));return amount;},flush(){},close(){}};
+ const volume=new (DiskVolume as any)(module,{getFile:async()=>new File([bytes],'backing')},access,16*1024*1024);
+ fs.mkdir('/disk');volume.mount('/disk');
+ stage='hardlinks';fs.writeFile('/disk/a',new Uint8Array([1,2,3]));fs.link('/disk/a','/disk/b');
+ check(fs.stat('/disk/a').nlink===2,'Hardlink count');fs.rename('/disk/a','/disk/b');
+ check(fs.stat('/disk/a').nlink===2&&fs.stat('/disk/b').nlink===2,'Same-inode rename removed a name');
+ stage='open unlink';const stream=fs.open('/disk/a','r+');fs.unlink('/disk/a');fs.unlink('/disk/b');const buffer=new Uint8Array(3);fs.read(stream,buffer,0,3,0);check(buffer.join()==='1,2,3','Unlinked open data lost');fs.close(stream);
+ stage='reuse';fs.writeFile('/disk/reuse',new Uint8Array([9]));fs.truncate('/disk/reuse',8);check(fs.readFile('/disk/reuse').join()==='9,0,0,0,0,0,0,0','Reused page leaked bytes');
+ stage='faults';shortWrite=true;let rejected=false;try{fs.truncate('/disk/reuse',1);}catch{rejected=true;}check(rejected,'Short truncate zero-fill accepted');shortWrite=false;
+ shortRead=true;rejected=false;try{fs.readFile('/disk/reuse');}catch{rejected=true;}check(rejected,'Short disk read silently zero-filled');shortRead=false;
+ stage='sparse';const sparse=fs.open('/disk/sparse','w+'),offset=2**32+17;fs.write(sparse,new Uint8Array([5,6,7]),0,3,offset);check(fs.stat('/disk/sparse').size===offset+3,'4GiB size truncated');const tail=new Uint8Array(4);fs.read(sparse,tail,0,4,offset-1);check(tail.join()==='0,5,6,7','4GiB offset truncated');fs.close(sparse);
+ stage='snapshot';const output=await volume.outputs('/disk'),blob=output.find((x:any)=>x.name==='sparse').blob;check(blob.size===offset+3,'Sparse snapshot size');check(new Uint8Array(await blob.slice(offset-1).arrayBuffer()).join()==='0,5,6,7','Sparse snapshot tail');check(new Uint8Array(await blob.slice(0,3).arrayBuffer()).join()==='0,0,0','Sparse snapshot gap');
+ self.postMessage({ok:true});
+ }catch(error){self.postMessage({error:stage+': '+String(error)+' '+JSON.stringify(error)+' '+(error as Error).stack});}};

@@ -1,0 +1,11 @@
+import {readdir} from "node:fs/promises";
+import {join} from "node:path";
+const endpoint=process.argv[2]||"http://127.0.0.1:9223",url=process.argv[3]||"http://127.0.0.1:4173/tests/repair-large.html",directory=process.argv[4]||"/tmp/archive-repair-verification";
+const target=await(await fetch(endpoint+"/json/new?"+encodeURIComponent(url),{method:"PUT"})).json();const ws=new WebSocket(target.webSocketDebuggerUrl);
+await new Promise(resolve=>ws.addEventListener("open",resolve,{once:true}));let id=0;const pending=new Map();ws.addEventListener("message",event=>{const data=JSON.parse(event.data);if(data.id){pending.get(data.id)?.(data);pending.delete(data.id)}});
+const call=(method,params={})=>new Promise(resolve=>{pending.set(++id,resolve);ws.send(JSON.stringify({id,method,params}))});
+try{let ready=false;for(let i=0;i<40;i++){const response=await call("Runtime.evaluate",{expression:"document.documentElement.dataset.ready",returnByValue:true});if(response.result?.result?.value==="true"){ready=true;break}await new Promise(resolve=>setTimeout(resolve,250))}if(!ready)throw Error("Large harness did not become ready");
+const doc=await call("DOM.getDocument");const repair=url.includes("repair-large");const selections=repair?[["#source",[join(directory,"original/large.bin")]],["#damaged",[join(directory,"damaged/large.bin")]],["#parity",(await readdir(join(directory,"original"))).filter(name=>name.endsWith(".par2")).map(name=>join(directory,"original",name))]]:[["#input",[join(directory,"original/large.bin")]]];
+for(const [selector,files]of selections){const input=await call("DOM.querySelector",{nodeId:doc.result.root.nodeId,selector});await call("DOM.setFileInputFiles",{nodeId:input.result.nodeId,files})}if(repair)await call("Runtime.evaluate",{expression:"document.querySelector(\"#run\").click()"});
+let result;for(let i=0;i<360;i++){await new Promise(resolve=>setTimeout(resolve,500));const response=await call("Runtime.evaluate",{expression:"document.querySelector(\"#results\")?.textContent",returnByValue:true});try{const value=JSON.parse(response.result?.result?.value);if(value.done){result=value;break}}catch{}}if(!result)throw Error("Large verification timed out");console.log(JSON.stringify(result,null,2));process.exitCode=result.results.every(item=>item.ok)?0:1;
+}finally{ws.close();await fetch(endpoint+"/json/close/"+target.id)}
