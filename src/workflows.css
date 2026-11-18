@@ -45,3 +45,4 @@
 .file-row.skipped .file-name{color:var(--muted)}
 .file-row .file-name small{display:block;margin-top:2px;color:var(--muted);font-size:11px}
 .file-settings-table tr.skipped select{opacity:.45}
+.reading-folder{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:20;display:flex;align-items:center;gap:10px;padding:10px 16px;border:1px solid var(--border-strong);border-radius:999px;background:var(--raised);color:var(--text);font-size:13px;box-shadow:0 8px 24px rgb(0 0 0/.25);max-width:calc(100vw - 32px)}.reading-folder[hidden]{display:none}.reading-folder .spinner{flex:none;width:14px;height:14px;border:2px solid var(--accent-text);border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
