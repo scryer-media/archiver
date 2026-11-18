@@ -3,11 +3,12 @@ import {ArchiveEngine} from './tool-engine';
 import {ProgressTracker,duration,type ProgressSample} from './progress';
 import {recoveryName,archiveStem,type ArchiveGroup} from './archive-groups';
 import {isOutputLimited} from '../engine/output-budget';
+import {checkRecovery} from './recovery';
 
 type JobState='queued'|'active'|'needs-folder'|'done'|'failed'|'cancelled';
 type Output={name:string;blob:Blob};
 interface Job extends ArchiveGroup {id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string}
-interface Helpers {svg:(name:string)=>string;esc:(text:string)=>string;size:(bytes:number)=>string;canStart:()=>boolean;notice:(message:string,error?:boolean)=>void;addArchives:()=>void;save:(file:Output)=>void;streaming:()=>boolean}
+interface Helpers {isArchive:(name:string)=>boolean;svg:(name:string)=>string;esc:(text:string)=>string;size:(bytes:number)=>string;canStart:()=>boolean;notice:(message:string,error?:boolean)=>void;addArchives:()=>void;save:(file:Output)=>void;streaming:()=>boolean}
 const folderAccess=()=>'showDirectoryPicker' in window;
 const PAGE=200;
 // Without disk-backed browser storage the engine falls back to a 128 MiB memory limit; stay under it so the queue's own budget trips first.
@@ -64,9 +65,12 @@ export class ExtractionQueue {
    const engine=this.engine=new ArchiveEngine(update=>this.progress(engine,update));
    this.active=job;job.state='active';this.tracker.start(performance.now());this.render();
    try{
-    const inputs=job.files.filter(file=>!recoveryName(file.name));
     // Dispose does not settle every native call, so cancellation also releases the loop directly.
     const cancelled=new Promise<never>((_resolve,reject)=>{this.abortActive=()=>reject(new Error('Cancelled'));});
+    // With recovery files in the set, check the archive against them first and repair it when the check finds damage.
+    const recovery=await Promise.race([checkRecovery(engine,job.files,job.password,job.options.outputLimitBytes,this.helpers.isArchive),cancelled]);
+    const inputs=recovery?.files??job.files.filter(file=>!recoveryName(file.name));
+    const note=recovery?.repaired?' · repaired':recovery?.checkFailed?` · recovery check could not run (${recovery.checkFailed})`:recovery?' · checked':'';
     // Without a folder, an archive holding one file goes to Downloads. Anything else is kept in this tab, but only up to what the tab can hold.
     const inspected=this.destination?undefined:await Promise.race([engine.inspect(inputs,job.password,job.format,job.options),cancelled]);
     const stream=!!inspected?.streamable&&this.helpers.streaming();
@@ -80,9 +84,9 @@ export class ExtractionQueue {
      if(result&&job.state==='active'){
       const count=result.savedFiles??result.files.length,elapsed=duration(this.tracker.view(performance.now()).elapsedSeconds);
       job.state=result.complete===false?'failed':'done';
-      job.detail=result.complete===false?(result.message||'Incomplete'):`${stream?'Sent to Downloads':`${count} ${count===1?'file':'files'}`} · ${elapsed}`;
+      job.detail=result.complete===false?(result.message||'Incomplete'):`${stream?'Sent to Downloads':`${count} ${count===1?'file':'files'}`}${note} · ${elapsed}`;
       // In-tab results live in the engine's storage, so that engine stays alive until the job is cleared.
-      if(!this.destination&&!stream&&job.state==='done'){job.outputs=result.files;job.engine=engine;if(inspected?.streamable&&result.files.length===1){this.helpers.save(result.files[0]);job.detail=`Sent to Downloads · ${elapsed}`;}}
+      if(!this.destination&&!stream&&job.state==='done'){job.outputs=result.files;job.engine=engine;if(inspected?.streamable&&result.files.length===1){this.helpers.save(result.files[0]);job.detail=`Sent to Downloads${note} · ${elapsed}`;}}
      }
     }
    }catch(error){if(job.state==='active'){job.state='failed';job.detail=error instanceof Error?error.message:String(error);}}
