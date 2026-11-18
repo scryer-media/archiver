@@ -4,6 +4,8 @@ import type {FileCreateOptions} from '../engine/client';
 type Format = 'zip'|'7z';
 const codecs=['lzma2','lzma','ppmd','bzip2','zstd','deflate','lz4','brotli','copy'];
 const filters=['none','delta','x86','arm','arm64','thumb','ia64','sparc','ppc','riscv','bcj2'];
+const codecLabels:Record<string,string>={lzma2:'LZMA2',lzma:'LZMA',ppmd:'PPMd',bzip2:'BZip2',zstd:'Zstandard',deflate:'Deflate',lz4:'LZ4',brotli:'Brotli',copy:'Store'};
+const filterLabels:Record<string,string>={none:'None',delta:'Delta',x86:'x86',arm:'ARM',arm64:'ARM64',thumb:'ARM Thumb',ia64:'IA-64',sparc:'SPARC',ppc:'PowerPC',riscv:'RISC-V',bcj2:'BCJ2'};
 const levels:Record<string,[number,number,number]>={lzma2:[0,9,3],lzma:[0,9,3],ppmd:[0,9,6],bzip2:[1,9,5],zstd:[1,22,3],deflate:[0,9,6],brotli:[0,11,5]};
 export class CreationSettings {
  advanced=false;
@@ -46,7 +48,7 @@ export class CreationSettings {
   const result:FileCreateOptions={name:plan.name,codec:plan.codec};const bounds=levels[plan.codec||''];
   if(bounds)result.level=plan.level??bounds[2];
   if(this.format==='7z'){
-   result.filter=plan.filter||'none';
+   result.filter=plan.codec==='copy'?'none':plan.filter||'none';
    if(plan.codec==='lzma'||plan.codec==='lzma2')result.dictionarySize=Math.min(plan.dictionarySize||8*1024*1024,this.memory/32,8*1024*1024);
    if(result.filter==='delta')result.deltaDistance=plan.deltaDistance||1;
   }
@@ -66,28 +68,34 @@ export class CreationSettings {
   this.page=Math.min(this.page,Math.max(0,Math.ceil(indices.length/50)-1));
   const start=this.page*50,visible=indices.slice(start,start+50);
   const count=document.createElement('p');count.className='inspection-status';count.textContent=indices.length?(start+1)+'–'+(start+visible.length)+' of '+indices.length+' files':'No matching files';this.host.append(count);
-  const hasPlans=['zip','7z'].includes(this.format);
-  visible.forEach(index=>{const file=this.files[index];
-   const detail=document.createElement('details');detail.className='file-settings';detail.open=this.files.length<=3;
-   const heading=document.createElement('summary'),name=document.createElement('span'),type=document.createElement('small');name.textContent=file.webkitRelativePath||file.name;type.textContent=this.detections[index]?.label||'Detecting…';type.title=this.detections[index]?.reason||'';heading.append(name,type);detail.append(heading);
-   if(hasPlans){const plan=this.effective(index),fields=document.createElement('div');fields.className='file-settings-grid';
-    const commit=(patch:Partial<FileCreateOptions>)=>{const next=this.normalize({...plan,...patch});this.overrides.set(this.format+':'+plan.name,next);this.render();};
-    const select=(label:string,values:string[],value:string,apply:(value:string)=>void)=>{const field=document.createElement('label');field.textContent=label;const input=document.createElement('select');for(const item of values){const option=document.createElement('option');option.value=item;option.textContent=item==='copy'?'Store':item.toUpperCase();input.append(option);}input.value=value;input.addEventListener('change',()=>apply(input.value));field.append(input);fields.append(field);};
-    const number=(label:string,value:number,min:number,max:number,key:'level'|'deltaDistance')=>{const field=document.createElement('label');field.textContent=label;const input=document.createElement('input');input.type='number';input.required=true;input.step='1';input.min=String(min);input.max=String(max);input.value=String(value);input.addEventListener('change',()=>{if(input.checkValidity())commit({[key]:input.valueAsNumber});});field.append(input);fields.append(field);};
-    select('Compression',this.format==='zip'?['deflate','copy']:codecs,plan.codec||'lzma2',codec=>commit({codec,level:undefined,dictionarySize:undefined}));
-    const bounds=levels[plan.codec||''];if(bounds)number('Level',plan.level??bounds[2],bounds[0],bounds[1],'level');
-    if(this.format==='7z'){
-     select('Filter',filters,plan.filter||'none',filter=>commit({filter}));
-     if(plan.codec==='lzma'||plan.codec==='lzma2'){
-      const sizes=[65536,262144,1048576,2097152,4194304,8388608].filter(size=>size<=this.memory/32);
-      const field=document.createElement('label');field.textContent='Dictionary';const input=document.createElement('select');for(const size of sizes){const option=document.createElement('option');option.value=String(size);option.textContent=size<1048576?size/1024+' KiB':size/1048576+' MiB';input.append(option);}input.value=String(plan.dictionarySize);input.addEventListener('change',()=>commit({dictionarySize:Number(input.value)}));field.append(input);fields.append(field);
+  if(!['zip','7z'].includes(this.format)){const note=document.createElement('p');note.className='inspection-status';note.textContent='Compression applies to the entire archive or stream.';this.host.append(note);}
+  else{
+   const seven=this.format==='7z',table=document.createElement('table'),head=document.createElement('tr'),body=document.createElement('tbody');
+   for(const label of ['File','Compression','Level',...(seven?['Filter','Dictionary']:[])]){const cell=document.createElement('th');cell.scope='col';cell.textContent=label;head.append(cell);}
+   const unused=()=>{const cell=document.createElement('td');cell.className='not-applicable';cell.textContent='—';cell.title='Not used by this compression';return cell;};
+   visible.forEach(index=>{
+    const file=this.files[index],plan=this.effective(index),label=file.webkitRelativePath||file.name,row=document.createElement('tr');
+    const commit=(patch:Partial<FileCreateOptions>)=>{this.overrides.set(this.format+':'+plan.name,this.normalize({...plan,...patch}));this.render();};
+    const select=(setting:string,choices:(string|number)[],text:(value:string)=>string,value:string|number,apply:(value:string)=>void)=>{const input=document.createElement('select');input.setAttribute('aria-label',setting+' for '+label);for(const choice of choices){const option=document.createElement('option');option.value=String(choice);option.textContent=text(String(choice));input.append(option);}input.value=String(value);input.addEventListener('change',()=>apply(input.value));return input;};
+    const cell=(...inputs:HTMLElement[])=>{const td=document.createElement('td');td.append(...inputs);return td;};
+    const name=document.createElement('th'),path=document.createElement('span'),type=document.createElement('small');name.scope='row';path.textContent=label;type.textContent=this.detections[index]?.label||'Detecting…';type.title=this.detections[index]?.reason||'';name.append(path,type);row.append(name);
+    row.append(cell(select('Compression',this.format==='zip'?['deflate','copy']:codecs,codec=>codecLabels[codec]||codec,plan.codec||'lzma2',codec=>commit({codec,level:undefined,dictionarySize:undefined}))));
+    const bounds=levels[plan.codec||''];
+    row.append(bounds?cell(select('Level',Array.from({length:bounds[1]-bounds[0]+1},(_,at)=>bounds[0]+at),level=>level,plan.level??bounds[2],level=>commit({level:Number(level)}))):unused());
+    if(seven){
+     if(plan.codec==='copy')row.append(unused());
+     else{
+      const inputs=[select('Filter',filters,filter=>filterLabels[filter]||filter,plan.filter||'none',filter=>commit({filter,deltaDistance:undefined}))];
+      if(plan.filter==='delta')inputs.push(select('Delta distance',Array.from({length:256},(_,at)=>at+1),distance=>'Distance '+distance,plan.deltaDistance||1,distance=>commit({deltaDistance:Number(distance)})));
+      row.append(cell(...inputs));
      }
-     if(plan.filter==='delta')number('Delta distance',plan.deltaDistance||1,1,256,'deltaDistance');
+     row.append(plan.codec==='lzma'||plan.codec==='lzma2'?cell(select('Dictionary',[65536,262144,1048576,2097152,4194304,8388608].filter(size=>size<=this.memory/32),size=>Number(size)<1048576?Number(size)/1024+' KiB':Number(size)/1048576+' MiB',plan.dictionarySize??8388608,size=>commit({dictionarySize:Number(size)}))):unused());
     }
-    detail.append(fields);
-   }else{const note=document.createElement('p');note.textContent='Compression applies to the entire archive or stream.';detail.append(note);}
-   this.host.append(detail);
-  });
+    body.append(row);
+   });
+   const thead=document.createElement('thead');thead.append(head);table.append(thead,body);
+   const wrap=document.createElement('div');wrap.className='file-settings-table';wrap.append(table);this.host.append(wrap);
+  }
   if(indices.length>50){const navigation=document.createElement('div');navigation.className='file-settings-navigation';for(const [label,delta] of [['Previous',-1],['Next',1]] as const){const button=document.createElement('button');button.type='button';button.className='quiet';button.textContent=label;button.disabled=this.locked()||(delta<0?this.page===0:start+50>=indices.length);button.onclick=()=>{this.page+=delta;this.render();};navigation.append(button);}this.host.append(navigation);}
   if(this.locked())this.host.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLButtonElement>('input,select,button').forEach(input=>input.disabled=true);
  }

@@ -311,7 +311,7 @@ fn run(r: Request) -> Result<Value, String> {
             File::create("/out/archive.7z").map_err(err)?,
             |path| {
                 Ok((
-                    File::open(path).map_err(err)?,
+                    create::LazyFile::new(path),
                     fs::metadata(path).map_err(err)?.len(),
                 ))
             },

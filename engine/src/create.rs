@@ -1,5 +1,36 @@
 use super::Request;
 use std::io::{Read, Seek, Write};
+
+/// An input file opened on its first read and closed when it reaches end of file.
+/// A solid archive holds a reader for every selected file at once; opening them all
+/// up front runs out of file descriptors on folders with thousands of files.
+pub struct LazyFile {
+    path: String,
+    file: Option<std::fs::File>,
+    done: bool,
+}
+impl LazyFile {
+    pub fn new(path: &str) -> Self {
+        Self { path: path.to_owned(), file: None, done: false }
+    }
+}
+impl Read for LazyFile {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.done || buf.is_empty() {
+            return Ok(0);
+        }
+        let file = match &mut self.file {
+            Some(file) => file,
+            None => self.file.insert(std::fs::File::open(&self.path)?),
+        };
+        let read = file.read(buf)?;
+        if read == 0 {
+            self.file = None;
+            self.done = true;
+        }
+        Ok(read)
+    }
+}
 pub fn write<W: Write + Seek, R: Read>(
     r: &Request,
     plans: &[super::codecs::Plan],
@@ -162,6 +193,21 @@ mod tests {
                 millis
             );
         }
+    }
+    #[test]
+    fn lazy_file_opens_on_first_read_and_closes_at_end() {
+        let dir = std::env::temp_dir().join(format!("lazy-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("input.bin");
+        let mut lazy = LazyFile::new(path.to_str().unwrap());
+        assert!(lazy.file.is_none(), "nothing is opened before the first read");
+        std::fs::write(&path, b"lazy bytes").unwrap();
+        let mut bytes = Vec::new();
+        lazy.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, b"lazy bytes");
+        assert!(lazy.file.is_none(), "the file is closed once it is read to the end");
+        assert_eq!(lazy.read(&mut [0; 4]).unwrap(), 0, "a finished file is not reopened");
+        std::fs::remove_dir_all(&dir).unwrap();
     }
     #[test]
     fn incomplete_plan_fails_before_output_or_source_io() {
