@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn real_rar_hardlink_resolves_to_crc_checked_regular_member() {
         let bytes = include_bytes!(
-            "../../../rarpar/crates/unrar-rs/tests/fixtures/rar5/test_read_format_rar5_hardlink.rar"
+            "../../tests/fixtures/compatibility/rar5_hardlink.rar"
         );
         let mut archive = unrar_rs::RarArchive::open(std::io::Cursor::new(bytes)).unwrap();
         let members = archive.metadata().members;

@@ -65,6 +65,6 @@ class LocalSources(unittest.TestCase):
         target=self.repo/'a/src/lib.rs';target.unlink();target.symlink_to(outside)
         with self.assertRaisesRegex(ValueError,'escapes'):self.verify()
     def test_actual_sources_match(self):
-        self.assertEqual(check.verify(ROOT/'engine/Cargo.toml',ROOT/'engine/local-sources.json')['packages'],5)
+        self.assertEqual(check.verify(ROOT/'engine/Cargo.toml',ROOT/'engine/local-sources.json')['packages'],2)
 
 if __name__=='__main__':unittest.main(verbosity=2)

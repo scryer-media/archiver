@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn rar_fixture_preserves_timestamp_mode_and_hardlink_metadata() {
         let bytes = include_bytes!(
-            "../../../rarpar/crates/unrar-rs/tests/fixtures/rar5/test_read_format_rar5_hardlink.rar"
+            "../../tests/fixtures/compatibility/rar5_hardlink.rar"
         );
         let archive = unrar_rs::RarArchive::open(std::io::Cursor::new(bytes)).unwrap();
         let members = archive.metadata().members;

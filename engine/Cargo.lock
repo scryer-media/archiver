@@ -675,7 +675,9 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "par2-rs"
-version = "0.12.1"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c77c65675099cc57866d63a55cca3d8b28167c5bbf77315a1d04922049c4964"
 dependencies = [
  "bytes",
  "cap-std",
@@ -684,7 +686,7 @@ dependencies = [
  "md-5",
  "memmap2",
  "rayon",
- "reedsolomon-rs 0.4.11",
+ "reedsolomon-rs",
  "thiserror",
  "tracing",
 ]
@@ -692,13 +694,15 @@ dependencies = [
 [[package]]
 name = "par3-rs"
 version = "0.8.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c8392832ba877147b1ca0a7feec37e35e6ccca525976c030bb90d534d476216"
 dependencies = [
  "blake3",
  "cap-std",
  "crc-turbo",
  "libc",
  "rayon",
- "reedsolomon-rs 0.4.11",
+ "reedsolomon-rs",
  "thiserror",
  "tracing",
  "unicode-normalization",
@@ -764,14 +768,6 @@ checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
-]
-
-[[package]]
-name = "reedsolomon-rs"
-version = "0.4.11"
-dependencies = [
- "memmap2",
- "rayon",
 ]
 
 [[package]]
@@ -1060,7 +1056,7 @@ dependencies = [
  "memchr",
  "ppmd-turbo",
  "rayon",
- "reedsolomon-rs 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "reedsolomon-rs",
  "rmp-serde",
  "serde",
  "sha2",
