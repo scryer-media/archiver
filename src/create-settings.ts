@@ -5,6 +5,8 @@ type Format = 'zip'|'7z';
 const codecs=['lzma2','lzma','ppmd','bzip2','zstd','deflate','lz4','brotli','copy'];
 const filters=['none','delta','x86','arm','arm64','thumb','ia64','sparc','ppc','riscv','bcj2'];
 const codecLabels:Record<string,string>={lzma2:'LZMA2',lzma:'LZMA',ppmd:'PPMd',bzip2:'BZip2',zstd:'Zstandard',deflate:'Deflate',lz4:'LZ4',brotli:'Brotli',copy:'Store'};
+// Branch and Delta filters prepare data for LZMA-family coders; 7-Zip pairs them with nothing else.
+const usesFilter=(codec?:string)=>codec==='lzma'||codec==='lzma2';
 const filterLabels:Record<string,string>={none:'None',delta:'Delta',x86:'x86',arm:'ARM',arm64:'ARM64',thumb:'ARM Thumb',ia64:'IA-64',sparc:'SPARC',ppc:'PowerPC',riscv:'RISC-V',bcj2:'BCJ2'};
 const levels:Record<string,[number,number,number]>={lzma2:[0,9,3],lzma:[0,9,3],ppmd:[0,9,6],bzip2:[1,9,5],zstd:[1,22,3],deflate:[0,9,6],brotli:[0,11,5]};
 export class CreationSettings {
@@ -50,7 +52,7 @@ export class CreationSettings {
   const result:FileCreateOptions={name:plan.name,codec:plan.codec};const bounds=levels[plan.codec||''];
   if(bounds)result.level=plan.level??bounds[2];
   if(this.format==='7z'){
-   result.filter=plan.codec==='copy'?'none':plan.filter||'none';
+   result.filter=usesFilter(plan.codec)?plan.filter||'none':'none';
    if(plan.codec==='lzma'||plan.codec==='lzma2')result.dictionarySize=Math.min(this.dictionary,this.memory/32,8*1024*1024);
    if(result.filter==='delta')result.deltaDistance=plan.deltaDistance||1;
   }
@@ -85,7 +87,7 @@ export class CreationSettings {
     const bounds=levels[plan.codec||''];
     row.append(bounds?cell(select('Level',Array.from({length:bounds[1]-bounds[0]+1},(_,at)=>bounds[0]+at),level=>level,plan.level??bounds[2],level=>commit({level:Number(level)}))):unused());
     if(seven){
-     if(plan.codec==='copy')row.append(unused());
+     if(!usesFilter(plan.codec))row.append(unused());
      else{
       const inputs=[select('Filter',filters,filter=>filterLabels[filter]||filter,plan.filter||'none',filter=>commit({filter,deltaDistance:undefined}))];
       if(plan.filter==='delta')inputs.push(select('Delta distance',Array.from({length:256},(_,at)=>at+1),distance=>'Distance '+distance,plan.deltaDistance||1,distance=>commit({deltaDistance:Number(distance)})));
