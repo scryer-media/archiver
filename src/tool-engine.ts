@@ -48,12 +48,21 @@ export class ArchiveEngine {
       }).catch(error => { if (generation === this.generation) { this.worker?.terminate(); this.worker = undefined; this.pending = false; this.reject = undefined; if (ownedLease) { this.pendingCleanup.push(removeStorage(ownedLease)); this.leases = this.leases.filter(item => item !== ownedLease); } reject(error); } });
     });
   }
-  private async exclusive(action: () => Promise<EngineResult>,limit?:number): Promise<EngineResult> {
+  private async exclusive<T extends EngineResult>(action: () => Promise<T>,limit?:number): Promise<T> {
     if (this.busy) throw new Error('An operation is already running');
     const budget=this.currentBudget=new WriteBudget(limit);
     this.busy = true;this.stage='';
     const epoch = this.cancellationEpoch;
     try { const result=await action();return {...result,writeBudgetUsed:budget.used,writeBudgetLimit:budget.limit}; } finally { if (epoch === this.cancellationEpoch) {this.busy = false;this.stage='';this.currentBudget=undefined;} }
+  }
+  /** Whether a streamed download can deliver this archive: a raw compressed stream, or an archive holding exactly one regular file. */
+  streamable(files: File[], password?: string, format?: string, options:ExtractionOptions={}) {
+    return this.exclusive(async () => {
+      if(this.isTarStream(files))return {complete:true,files:[],streamable:false};
+      if(files.length===1&&(/\.(gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib)$/i.test(files[0].name)||!!format&&['gz','zstd','br','xz','bz2','lzma','lz4','deflate','zlib'].includes(format)))return {complete:true,files:[],streamable:true};
+      const members=(await this.listInternal(files,password,format,options)).entries?.filter(entry=>!entry.isDirectory);
+      return {complete:true,files:[],streamable:members?.length===1&&(!members[0].isLink||options.links==='copy-safe')};
+    },options.outputLimitBytes);
   }
   list(files: File[], password?: string, format?: string, options:ExtractionOptions={}) { return this.exclusive(() => this.listInternal(files, password, format,options),options.outputLimitBytes); }
   extract(files: File[], password?: string, format?: string, destination?: FileSystemDirectoryHandle, delivery?: 'download',options:ExtractionOptions={}) {

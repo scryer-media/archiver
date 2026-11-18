@@ -63,7 +63,7 @@ const streamOptions=document.createElement('details');streamOptions.id='stream-b
 streamOptions.innerHTML='<summary>Stream options</summary><div class="advanced-options"><label>Compression engine<select id="stream-backend"><option value="auto">Automatic</option><option value="native">Browser</option><option value="wasm">WASM</option></select></label></div>';
 document.querySelector('.options')!.after(streamOptions);
 const creationSettings=new CreationSettings($('#file-settings'),updateFormat,()=>busy||saving);
-const queue=new ExtractionQueue($('#queue'),{svg,esc,size,canStart:()=>!busy&&!saving,notice,save:file=>save(file),addArchives:()=>($('#queue-input') as HTMLInputElement).click()});
+const queue=new ExtractionQueue($('#queue'),{svg,esc,size,canStart:()=>!busy&&!saving,notice,save:file=>save(file),streaming:()=>streamCapability.available,addArchives:()=>($('#queue-input') as HTMLInputElement).click()});
 function queueAdd(source:File[]){const groups=groupArchives(source,archiveName);if(!groups.length){notice('No archives found in that selection.',true);return 0;}queue.add(groups,mode==='extract'?($('#password') as HTMLInputElement).value||undefined:undefined,mode==='extract'?($('#input-format') as HTMLSelectElement).value||undefined:undefined,extractionOptions());return groups.length;}
 function updateFormat(){
  const format=($('#format') as HTMLSelectElement).value, native=mode==='create'&&format==='7z', protection=($('#protection') as HTMLSelectElement).value;
