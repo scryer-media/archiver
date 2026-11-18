@@ -8,7 +8,7 @@
 export type SkipKind = 'garbage' | 'vcs' | 'regenerable';
 export const skipKinds: readonly SkipKind[] = ['garbage', 'vcs', 'regenerable'];
 /** `test` sees one path segment; `next` is the segment after it, for rules that need the folder below (bin/Debug). */
-export interface SkipRule { kind: SkipKind; what: string; from: string; folder?: boolean; test: (name: string, next?: string) => boolean }
+export interface SkipRule { kind: SkipKind; what: string; from: string; folder?: boolean; /** The test reads `next`, so its answer cannot be cached by name alone. */ contextual?: boolean; test: (name: string, next?: string) => boolean }
 const exact = (...names: string[]) => { const set = new Set(names); return (name: string) => set.has(name); };
 const anyCase = (...names: string[]) => { const set = new Set(names.map(name => name.toLowerCase())); return (name: string) => set.has(name.toLowerCase()); };
 const suffix = (...endings: string[]) => (name: string) => endings.some(ending => name.length > ending.length && name.endsWith(ending));
@@ -99,7 +99,7 @@ const regenerable = kind('regenerable', [
  { from: 'Clojure', what: 'Classpath cache', folder: true, test: exact('.cpcache', '.shadow-cljs', '.lsp') },
  // .NET: C#, F#, Visual Basic
  { from: '.NET', what: 'Intermediate build output', folder: true, test: exact('obj') },
- { from: '.NET', what: 'Debug or Release build', folder: true, test: (name, next) => name === 'bin' && !!next && /^(Debug|Release|x64|x86|ARM64)$/i.test(next) },
+ { from: '.NET', what: 'Debug or Release build', folder: true, contextual: true, test: (name, next) => name === 'bin' && !!next && /^(Debug|Release|x64|x86|ARM64)$/i.test(next) },
  { from: '.NET', what: 'Visual Studio cache', folder: true, test: exact('.vs') },
  { from: 'F#', what: 'FAKE or Paket cache', folder: true, test: exact('.fake', 'paket-files', '.ionide') },
  // C and C++
@@ -142,13 +142,29 @@ const regenerable = kind('regenerable', [
 export const skipInventory: readonly SkipRule[] = [...garbage, ...vcs, ...regenerable];
 export const garbageOnly: ReadonlySet<SkipKind> = new Set<SkipKind>(['garbage']);
 
+const contextual = skipInventory.filter(rule => rule.contextual);
+const position = new Map(skipInventory.map((rule, index) => [rule, index]));
+// A large folder repeats the same few hundred folder names thousands of times, so each name's answer is kept.
+const byName = new Map<string, SkipRule | null>();
+function segmentRule(name: string, next: string | undefined, folder: boolean, kinds: ReadonlySet<SkipKind>, kindsKey: string) {
+ const key = kindsKey + (folder ? '/' : '.') + name;
+ let plain = byName.get(key);
+ if (plain === undefined) {
+  if (byName.size > 100_000) byName.clear();
+  plain = skipInventory.find(rule => !rule.contextual && kinds.has(rule.kind) && (folder || !rule.folder) && rule.test(name)) ?? null;
+  byName.set(key, plain);
+ }
+ // A contextual rule listed before the cached one still wins, so the first matching rule is the one reported.
+ for (const rule of contextual) if ((!plain || position.get(rule)! < position.get(plain)!) && kinds.has(rule.kind) && (folder || !rule.folder) && rule.test(name, next)) return rule;
+ return plain ?? undefined;
+}
 /** The rule that leaves `path` out under `kinds`, if any. `isDirectory` marks an entry that is itself a folder. */
 export function skipRule(path: string, isDirectory = false, kinds: ReadonlySet<SkipKind> = garbageOnly): SkipRule | undefined {
  if (!kinds.size) return undefined;
+ const kindsKey = skipKinds.filter(kind => kinds.has(kind)).join(',');
  const parts = path.split('/').filter(Boolean);
  for (let index = 0; index < parts.length; index++) {
-  const folder = index < parts.length - 1 || isDirectory;
-  const rule = skipInventory.find(rule => kinds.has(rule.kind) && (folder || !rule.folder) && rule.test(parts[index], parts[index + 1]));
+  const rule = segmentRule(parts[index], parts[index + 1], index < parts.length - 1 || isDirectory, kinds, kindsKey);
   if (rule) return rule;
  }
  return undefined;

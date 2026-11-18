@@ -38,22 +38,24 @@ export class CreationSettings {
  setContext(format:string,memory:number,dictionary=8*1024*1024){this.format=format;this.memory=memory;this.dictionary=dictionary;this.render();}
  setEffort(value:'standard'|'max'){this.effort=value;this.render();this.changed();}
  setAdvanced(value:boolean){this.advanced=value;this.render();this.changed();}
- /** Kinds of file left out automatically. Simple mode always skips garbage only; Advanced chooses, with garbage on at first. */
+ /** Kinds of file left out automatically, chosen in Simple and Advanced alike; garbage is on at first. */
  skipKinds=new Set<SkipKind>(garbageOnly);
  private dropped=new Set<string>();
  private kept=new Set<string>();
- setSkipKind(kind:SkipKind,value:boolean){if(value)this.skipKinds.add(kind);else this.skipKinds.delete(kind);this.render();this.changed();}
- private activeKinds(){return this.advanced?this.skipKinds:garbageOnly;}
+ setSkipKind(kind:SkipKind,value:boolean){if(value)this.skipKinds.add(kind);else this.skipKinds.delete(kind);this.reasons.clear();this.render();this.changed();}
+ /** Each file's skip reason, kept until the files, the kinds or a file's own toggle change; a large selection asks many times per redraw. */
+ private reasons=new Map<File,string|undefined>();
+ private activeKinds(){return this.skipKinds;}
  /** Why a folder stays out of the archive, or undefined when it goes in. */
  directoryReason(name:string){return skipRule(name,true,this.activeKinds())?.what;}
  /** Why `file` stays out of the archive, or undefined when it goes in. */
- skipReason(file:File){const name=logical(file);if(this.kept.has(name))return undefined;if(this.dropped.has(name))return 'Skipped';return skipRule(name,false,this.activeKinds())?.what;}
- toggleSkip(file:File){const name=logical(file);if(this.skipReason(file)){if(!this.dropped.delete(name))this.kept.add(name);}else{this.kept.delete(name);this.dropped.add(name);}this.render();this.changed();}
+ skipReason(file:File){if(this.reasons.has(file))return this.reasons.get(file);const name=logical(file),reason=this.kept.has(name)?undefined:this.dropped.has(name)?'Skipped':skipRule(name,false,this.activeKinds())?.what;this.reasons.set(file,reason);return reason;}
+ toggleSkip(file:File){const name=logical(file);if(this.skipReason(file)){if(!this.dropped.delete(name))this.kept.add(name);}else{this.kept.delete(name);this.dropped.add(name);}this.reasons.delete(file);this.render();this.changed();}
  included(){return this.files.filter(file=>!this.skipReason(file));}
  includedDirectories(directories:string[]){return directories.filter(name=>!this.directoryReason(name));}
  setFiles(files:File[]){
   this.abort?.abort();this.abort=new AbortController();const generation=++this.generation;
-  this.files=[...files];this.detections=[];this.page=0;this.query='';this.inspecting=files.length>0;this.completed=0;this.skipped=false;const names=new Set(files.map(file=>file.webkitRelativePath||file.name));
+  this.files=[...files];this.reasons.clear();this.detections=[];this.page=0;this.query='';this.inspecting=files.length>0;this.completed=0;this.skipped=false;const names=new Set(files.map(file=>file.webkitRelativePath||file.name));
   for(const name of this.overrides.keys())if(!names.has(name.slice(name.indexOf(':')+1)))this.overrides.delete(name);
   for(const set of [this.dropped,this.kept])for(const name of set)if(!names.has(name))set.delete(name);
   this.render();
@@ -64,7 +66,7 @@ export class CreationSettings {
  private status(){return this.inspecting?'Inspecting files · '+this.completed+' / '+this.files.length:this.skipped?'Inspection skipped · using general defaults':'File settings';}
  cancelInspection(){if(!this.inspecting)return;this.abort?.abort();this.detections=this.files.map(file=>unknownDetection(file.webkitRelativePath||file.name,'Inspection skipped; using general defaults.'));this.inspecting=false;this.skipped=true;this.pending=Promise.resolve();this.render();}
  ready(){return this.pending;}
- reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.dropped.clear();this.kept.clear();this.skipKinds=new Set(garbageOnly);this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
+ reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.dropped.clear();this.kept.clear();this.skipKinds=new Set(garbageOnly);this.reasons.clear();this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
  private recommendation(index:number):FileCreateOptions{
   const name=this.files[index].webkitRelativePath||this.files[index].name;
   const detection=this.detections[index];

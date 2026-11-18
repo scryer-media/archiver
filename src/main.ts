@@ -122,7 +122,7 @@ function updateFormat(){
  updateDelivery();
  $('#solid-option').hidden=!native||!creationSettings.advanced;$('#seven-options').hidden=!native;$('#protection-option').hidden=mode!=='create'||format==='par2'||format==='par3';$('#parity-options').hidden=!parity;
  
- $('#create-extras').hidden=mode!=='create'||!creationSettings.advanced;
+ $('#create-extras').hidden=mode!=='create';
  $('#add-files').innerHTML=mode==='create'?svg('plus')+' Add files':svg('file')+' Choose different files';($('#file-input') as HTMLInputElement).accept=mode==='extract'?archiveAccept():'';$('#add-folder').hidden=mode!=='create'||!canAddFolder();
  $('#link-policy-label').hidden=mode!=='extract';$('#queue-create').hidden=mode!=='create';$('#metadata-download').hidden=!latestMetadata.length;
  ['codec','filter','delta-distance'].forEach(id=>$('#'+id).closest('label')!.hidden=true);
@@ -133,6 +133,8 @@ function updateFormat(){
  
  
  if(mode==='create'&&files.length)$('#run').innerHTML=(format==='par2'||format==='par3'?'Create recovery files':'Create archive')+svg('box');
+ // Archive options only appears while one of its settings does.
+ $('#seven-options').hidden=!native||[...document.querySelectorAll<HTMLElement>('#seven-options label')].every(label=>label.hidden);
 }
 ['format','protection','filter','input-format'].forEach(id=>$('#'+id).addEventListener('change',updateFormat));
 function selectedGroups(){return mode==='extract'&&files.length&&!selectedArchive?groupArchives(repairedInputs.length?repairedInputs:files,archiveName):[];}
