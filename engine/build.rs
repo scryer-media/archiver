@@ -11,11 +11,9 @@ fn main() {
     for path in [
         "build.rs",
         "libarchive",
-        "unrar-source",
         "local-sources.json",
         "../scripts/verify-local-sources.py",
         "../scripts/vendor-libarchive.py",
-        "../scripts/verify-unrar-source.py",
     ] {
         println!("cargo:rerun-if-changed={path}");
     }
@@ -37,22 +35,6 @@ fn main() {
     print!(
         "{}",
         String::from_utf8(verified_local.stdout).expect("invalid local preflight output")
-    );
-    let verified_rar = Command::new("python3")
-        .arg(root.join("scripts/verify-unrar-source.py"))
-        .arg("--engine-manifest")
-        .arg(manifest.join("Cargo.toml"))
-        .arg("--cargo")
-        .output()
-        .expect("unable to verify required RAR reader source");
-    assert!(
-        verified_rar.status.success(),
-        "RAR source preflight failed: {}",
-        String::from_utf8_lossy(&verified_rar.stderr)
-    );
-    print!(
-        "{}",
-        String::from_utf8(verified_rar.stdout).expect("invalid RAR preflight output")
     );
     // Preparation is cache-only. Network acquisition is an explicit operator step.
     let prepared = Command::new("python3")
