@@ -1,4 +1,4 @@
-import {WriteBudget,outputLimit} from '../engine/output-budget';
+import {WriteBudget,ExpansionGate,outputLimit} from '../engine/output-budget';
 import {browserStream,nativeStreamFormat,NativeStreamCodecError} from './native-stream';
 import {preserveFileMetadata,timestamp} from './archive-metadata';
 import {creationPlans} from '../engine/create-plan';
@@ -93,7 +93,7 @@ self.onmessage=async({data})=>{
  try{
  const limit=outputLimit(data.outputLimitBytes??creation?.outputLimitBytes??extraction?.outputLimitBytes),grant=data.writeBudgetGrant??limit;
  if(!Number.isSafeInteger(grant)||grant<0)throw Error('Invalid worker write-budget grant');
- budget=new WriteBudget(Math.min(limit,grant),true);
+ budget=new WriteBudget(Math.min(limit,grant),true);if(data.expansion)budget.gate=new ExpansionGate(data.expansion);
  const progress=(nextMessage:string,_percent?:number)=>{message=nextMessage;emit();};
  progress(directory?'Streaming with local disk storage…':'Using bounded memory storage…');
  const transform=async(file:Blob,compress:boolean,streamFormat='gz',name?:string)=>{begin(compress?'compress-read':'decompress-read',compress?'Compressing':'Decompressing','input',file.size,1);const estimate=directory?await navigator.storage.estimate():undefined;const maximum=Math.min(budget!.remaining,outputDirectory||downloadStream?budget!.limit:directory?Math.max(0,(estimate?.quota??Number.MAX_SAFE_INTEGER)-(estimate?.usage||0)):memoryLimit);const target=await output(name);let bytes=0;const guard=new TransformStream<Uint8Array,Uint8Array>({transform(chunk,controller){bytes+=chunk.length;if(!Number.isSafeInteger(bytes))throw Error('Stream output exceeds safe byte range');if(bytes>maximum){if(maximum===budget!.remaining)throw budget!.exceeded();throw Error('Stream output exceeds available storage or memory');}if(!directory&&!outputDirectory&&!downloadStream&&bytes>memoryLimit)throw Error('Expanded output exceeded the 128 MB memory limit.');controller.enqueue(chunk);}});await browserStream(file,streamFormat,compress?'compress':'decompress',inputProgress).pipeThrough(guard).pipeTo(target.writer);filesProcessed=1;emit(true,true);return target.finish();};
@@ -127,5 +127,5 @@ self.onmessage=async({data})=>{
   if(zipOut){await zipOut.finish();await zipWriter!.close();}
   publish({metadata,savedFiles:outputDirectory?entries.filter(entry=>!entry.directory).length:undefined,directories:entries.filter(entry=>entry.directory).map(entry=>entry.filename.replace(/\/$/,'')),files:result});
  }finally{await zip.reader.close();}
- }catch(error){await zipWriter?.abort(error).catch(()=>{});self.postMessage({writeBudgetUsed:budget?.used??0,outputLimited:!!budget?.failure,error:error instanceof Error?(error.message||error.name||'Archive operation failed'):(String(error)||'Archive operation failed'),nativeCodecError:error instanceof NativeStreamCodecError});}
+ }catch(error){await zipWriter?.abort(error).catch(()=>{});self.postMessage({writeBudgetUsed:budget?.used??0,outputLimited:!budget?.gate?.stopped&&!!budget?.failure,expansionStopped:!!budget?.gate?.stopped,error:error instanceof Error?(error.message||error.name||'Archive operation failed'):(String(error)||'Archive operation failed'),nativeCodecError:error instanceof NativeStreamCodecError});}
 };

@@ -1,4 +1,4 @@
-import {WriteBudget,markOutputLimited} from '../engine/output-budget';
+import {WriteBudget,markOutputLimited,expansionCheckpoint,expansionChannel,expansionGrant,answerExpansion} from '../engine/output-budget';
 import {chooseNativeStream} from './native-stream';
 import {creationPlans} from '../engine/create-plan';
 import { createDownload, type DownloadJob } from '../engine/download';
@@ -33,7 +33,7 @@ export class ArchiveEngine {
     if (this.pending) return Promise.reject(new Error('An operation is already running'));
     this.pending = true;
     const generation = ++this.generation;
-    const budget=this.currentBudget??new WriteBudget(creation?.outputLimitBytes??extraction?.outputLimitBytes),grant=budget.remaining;
+    const budget=this.currentBudget??new WriteBudget(creation?.outputLimitBytes??extraction?.outputLimitBytes),expansion=expansionChannel(budget),grant=expansionGrant(budget,budget.remaining,expansion);
     return new Promise((resolve, reject) => {
       this.reject = reject;
       let ownedLease: StorageLease | undefined;
@@ -47,16 +47,20 @@ export class ArchiveEngine {
           if (error) { this.pendingCleanup.push(removeStorage(lease)); this.leases = this.leases.filter(item => item !== lease); reject(error); }
           else resolve(result!);
         };
-        worker.onmessage = ({ data }) => { if(generation!==this.generation)return;if (data.progress) { this.emitProgress(data.progress); return; }try{budget.record(data.writeBudgetUsed,grant);}catch(error){finish(error===budget.failure?markOutputLimited(error as Error):error as Error);return;} finish(data.error ? Object.assign(new Error(data.error),{nativeCodecError:data.nativeCodecError===true},data.outputLimited===true?{outputLimited:true}:{}) : undefined, data); };
+        worker.onmessage = ({ data }) => { if(generation!==this.generation)return;if (data.progress) { this.emitProgress(data.progress); return; }if(data.expansion){if(expansion)void answerExpansion(budget,expansion,data.expansion.written,()=>generation===this.generation);return;}try{budget.record(data.writeBudgetUsed,grant);}catch(error){finish(error===budget.failure?markOutputLimited(error as Error):error as Error);return;} finish(data.error ? Object.assign(new Error(data.error),{nativeCodecError:data.nativeCodecError===true},data.outputLimited===true?{outputLimited:true}:{}) : undefined, data); };
         worker.onerror = event => finish(new Error(event.message || 'Archive worker failed'));
         worker.onmessageerror = () => finish(new Error('Archive worker response could not be decoded'));
-        worker.postMessage({ writeBudgetGrant:grant,outputLimitBytes:budget.limit,op, files, names: files.map(file => file.webkitRelativePath || file.name), password, format, directories, outputDirectory, downloadStream, extraction, creation:creation?{fileOptions:creation.fileOptions,codec:creation.codec,filter:creation.filter,level:creation.level,dictionarySize:creation.dictionarySize,deltaDistance:creation.deltaDistance,encryptHeaders:creation.encryptHeaders}:undefined, storageId: lease.name },downloadStream?[downloadStream]:[]);
+        worker.postMessage({ expansion,writeBudgetGrant:grant,outputLimitBytes:budget.limit,op, files, names: files.map(file => file.webkitRelativePath || file.name), password, format, directories, outputDirectory, downloadStream, extraction, creation:creation?{fileOptions:creation.fileOptions,codec:creation.codec,filter:creation.filter,level:creation.level,dictionarySize:creation.dictionarySize,deltaDistance:creation.deltaDistance,encryptHeaders:creation.encryptHeaders}:undefined, storageId: lease.name },downloadStream?[downloadStream]:[]);
       }).catch(error => { if (generation === this.generation) { this.worker?.terminate(); this.worker = undefined; this.pending = false; this.reject = undefined; if (ownedLease) { this.pendingCleanup.push(removeStorage(ownedLease)); this.leases = this.leases.filter(item => item !== ownedLease); } reject(error); } });
     });
   }
-  private async exclusive<T extends EngineResult>(action: () => Promise<T>,limit?:number): Promise<T> {
+  /** Asked when a job's output grows past what a reasonable archive expands to; resolves true to keep going. */
+  onExpansion?:(written:number,input:number)=>Promise<boolean>;
+  private async exclusive<T extends EngineResult>(action: () => Promise<T>,limit:number|undefined,input:File[]): Promise<T> {
     if (this.busy) throw new Error('An operation is already running');
     const budget=this.currentBudget=new WriteBudget(limit);
+    const onExpansion=this.onExpansion,inputBytes=input.reduce((sum,file)=>sum+file.size,0);
+    if(onExpansion){budget.checkpoint=expansionCheckpoint(inputBytes);budget.ask=written=>onExpansion(written,inputBytes);}
     this.busy = true;this.stage='';
     const epoch = this.cancellationEpoch;
     try { const result=await action();return {...result,writeBudgetUsed:budget.used,writeBudgetLimit:budget.limit}; } finally { if (epoch === this.cancellationEpoch) {this.busy = false;this.stage='';this.currentBudget=undefined;} }
@@ -69,9 +73,9 @@ export class ArchiveEngine {
       const members=(await this.listInternal(files,password,format,options)).entries?.filter(entry=>!entry.isDirectory);
       const total=members?.reduce((sum,entry)=>sum+entry.size,0);
       return {complete:true,files:[],streamable:members?.length===1&&(!members[0].isLink||options.links==='copy-safe'),totalBytes:members?.every(entry=>Number.isSafeInteger(entry.size)&&entry.size>=0)&&Number.isSafeInteger(total)?total:undefined};
-    },options.outputLimitBytes);
+    },options.outputLimitBytes,files);
   }
-  list(files: File[], password?: string, format?: string, options:ExtractionOptions={}) { return this.exclusive(() => this.listInternal(files, password, format,options),options.outputLimitBytes); }
+  list(files: File[], password?: string, format?: string, options:ExtractionOptions={}) { return this.exclusive(() => this.listInternal(files, password, format,options),options.outputLimitBytes,files); }
   /**
    * Extracts an archive. `delivery: 'download'` streams its one file to the browser's Downloads;
    * `delivery: 'zip'` streams every file it holds as one ZIP, for browsers that cannot write to a folder.
@@ -116,7 +120,7 @@ export class ArchiveEngine {
         if(!removed)throw new Error(String(error)+'; could not remove partial extraction directory '+job.name);
         throw error;
       }
-    },options.outputLimitBytes);
+    },options.outputLimitBytes,files);
   }
   /** `stem` names the archive ("photos" gives photos.zip); the engine itself always writes archive.*. */
   create(files: File[], {stem,...options}: CreateOptions & {stem?: string} = {}) { return this.exclusive(() => {
@@ -142,7 +146,7 @@ export class ArchiveEngine {
     if(!compressedTar&&!['zip','tar'].includes(format)&&(files.length!==1||options.directories?.length||options.password))throw new Error('Standalone streams require one file and no password or directories');
     const name=compressedTar||['zip','tar'].includes(format)?(stem||'archive')+'.'+format:(files[0]?.name||'archive')+'.'+format;
     return this.deliver(name,downloadStream=>this.createInternal(files,{...options,downloadStream}));
-  },options.outputLimitBytes); }
+  },options.outputLimitBytes,files); }
   private async deliver(name:string,action:(stream:WritableStream<Uint8Array>)=>Promise<EngineResult>):Promise<EngineResult>{
     const epoch=this.cancellationEpoch,job=await createDownload(name);this.downloads.push(job);
     try{this.checkEpoch(epoch);const result=await action(job.writable);this.checkEpoch(epoch);return {...result,files:[],downloadSent:true,downloadName:job.name,message:'Sent to browser download; check the browser downloads list for final disk status'};}
@@ -239,14 +243,14 @@ export class ArchiveEngine {
     }
     return ['7z', 'tar', 'par2', ...streams].includes(format) ? this.native.create(files, options) : this.fallback('create', files, options.password, format, options.directories,undefined,options.downloadStream,options);
   }
-  operate(op: 'embed' | 'verifyEmbedded' | 'repairEmbedded' | 'removeEmbedded' | 'rebuildParity', files: File[], options?: CreateOptions) { return this.exclusive(() => this.native.operate(op, files, options),options?.outputLimitBytes); }
+  operate(op: 'embed' | 'verifyEmbedded' | 'repairEmbedded' | 'removeEmbedded' | 'rebuildParity', files: File[], options?: CreateOptions) { return this.exclusive(() => this.native.operate(op, files, options),options?.outputLimitBytes,files); }
   embed(files: File[], options?: CreateOptions) { return this.operate('embed', files, options); }
   verifyEmbedded(files: File[], options?: CreateOptions) { return this.operate('verifyEmbedded', files, options); }
   repairEmbedded(files: File[], options?: CreateOptions) { return this.operate('repairEmbedded', files, options); }
   removeEmbedded(files: File[], options?: CreateOptions) { return this.operate('removeEmbedded', files, options); }
   rebuildParity(files: File[], options?: CreateOptions) { return this.operate('rebuildParity', files, options); }
-  verify(files: File[], options?: CreateOptions) { return this.exclusive(() => this.native.verify(files, options),options?.outputLimitBytes); }
-  repair(files: File[], password?: string, options?: CreateOptions) { return this.exclusive(() => this.native.repair(files, password, options),options?.outputLimitBytes); }
+  verify(files: File[], options?: CreateOptions) { return this.exclusive(() => this.native.verify(files, options),options?.outputLimitBytes,files); }
+  repair(files: File[], password?: string, options?: CreateOptions) { return this.exclusive(() => this.native.repair(files, password, options),options?.outputLimitBytes,files); }
   dispose(): Promise<boolean> {
     for(const job of this.downloads.splice(0)){job.cancel();job.release();}
     this.decodedTar = undefined; this.currentBudget=undefined; this.busy = false; this.cancellationEpoch++; this.generation++; this.worker?.terminate(); this.worker = undefined; this.pending = false;

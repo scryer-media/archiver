@@ -1,4 +1,4 @@
-import {WriteBudget,outputLimit,installWriteBudget} from './output-budget';
+import {WriteBudget,ExpansionGate,outputLimit,installWriteBudget} from './output-budget';
 import { preserveFileMetadata } from '../src/archive-metadata';
 import type { EntryMetadata } from './client';
 import { publicationPolicy } from './publication';
@@ -18,6 +18,7 @@ self.onmessage = async ({ data }) => {
     const limit=outputLimit(options.outputLimitBytes),grant=options.writeBudgetGrant??limit;
     if(!Number.isSafeInteger(grant)||grant<0)throw new Error('Invalid worker write-budget grant');
     budget=new WriteBudget(Math.min(limit,grant),true);
+    if(data.expansion)budget.gate=new ExpansionGate(data.expansion);
     const names: string[] = data.names ?? files.map((file: File) => file.webkitRelativePath || file.name);
     if (!files.length && !(op === 'create' && options.directories?.length)) throw new Error('Choose at least one file');
     if (new Set(names).size !== files.length) throw new Error('Input paths must be unique');
@@ -133,7 +134,7 @@ self.onmessage = async ({ data }) => {
   } catch (error) {
     try { direct?.close(); } catch {}
     try { volume?.close(); } catch {}
-    self.postMessage({ writeBudgetUsed:budget?.used??0, outputLimited:!!budget?.failure, error: budget?.failure?.message??inputFailure??(error instanceof Error ? error.message : String(error)) });
+    self.postMessage({ writeBudgetUsed:budget?.used??0, outputLimited:!budget?.gate?.stopped&&!!budget?.failure, expansionStopped:!!budget?.gate?.stopped, error: budget?.gate?.stopped?.message??budget?.failure?.message??inputFailure??(error instanceof Error ? error.message : String(error)) });
   }
 };
 export {};

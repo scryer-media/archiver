@@ -30,3 +30,9 @@
 .fly-ghost{position:fixed;z-index:60;margin:0;pointer-events:none;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface);box-shadow:0 8px 24px rgb(0 0 0/.25);transform-origin:center;will-change:transform,opacity}
 @keyframes queue-arrive{from{box-shadow:inset 0 0 0 1px var(--progress),0 0 0 3px color-mix(in srgb,var(--progress) 35%,transparent)}to{box-shadow:inset 0 0 0 1px transparent,0 0 0 0 transparent}}
 .queue-row.arrived{animation:queue-arrive .6s ease-out}
+/* A job paused because its output grew far past its input. */
+.queue-row.paused{background:var(--surface);box-shadow:inset 2px 0 0 var(--warning)}.queue-row.paused .queue-detail{white-space:normal;color:var(--text)}
+.file-symbol.warn{color:var(--warning)}
+.queue-pause-actions,.expansion-actions{display:flex;gap:8px;flex:none}.queue-pause-actions button,.expansion-actions button{min-height:36px;padding:0 14px;font-size:13px}
+.expansion{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:12px;padding:12px 14px;border:1px solid var(--warning);border-radius:10px;background:var(--surface)}.expansion p{flex:1 1 260px;margin:0;font-size:13px}
+@media (max-width:640px){.queue-row.paused{flex-wrap:wrap}.queue-pause-actions{width:100%;justify-content:flex-end}}

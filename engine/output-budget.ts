@@ -8,10 +8,42 @@ export function outputLimit(value: number | undefined): number {
 /** Marks an error as "the write budget ran out", so callers can tell it apart without reading the message. */
 export function markOutputLimited<T>(error:T):T{if(error&&typeof error==='object')Object.assign(error,{outputLimited:true});return error;}
 export function isOutputLimited(error:unknown):boolean{return !!error&&typeof error==='object'&&(error as {outputLimited?:unknown}).outputLimited===true;}
+/** A reasonable archive expands to at most this many times its own size before the user is asked. */
+export const EXPANSION_RATIO = 100;
+/** Output up to this size never asks, so small archives of very compressible data run straight through. */
+export const EXPANSION_FLOOR = GIB;
+/** After the user says keep going, the next question waits until the output is this many times larger again. */
+export const EXPANSION_STEP = 10;
+export const expansionCheckpoint = (inputBytes: number): number => Math.max(EXPANSION_FLOOR, inputBytes * EXPANSION_RATIO);
+export const EXPANSION_STOPPED = 'Stopped: the output kept growing far past the size of its input.';
+/** Shared between the page and a worker: [0] the answer (0 waiting, 1 keep going, 2 stop) and, from byte 8, the worker's next allowance. */
+export interface ExpansionChannel { shared: SharedArrayBuffer; allowance: number }
+
+/** Worker side: blocks a write that would pass the allowance until the page answers. */
+export class ExpansionGate {
+  private flag: Int32Array; private next: Float64Array; private allowance: number;
+  stopped?: Error;
+  constructor(channel: ExpansionChannel) { this.allowance = channel.allowance; this.flag = new Int32Array(channel.shared, 0, 1); this.next = new Float64Array(channel.shared, 8, 1); }
+  check(total: number): void {
+    if (this.stopped) throw this.stopped;
+    while (total > this.allowance) {
+      Atomics.store(this.flag, 0, 0);
+      (self as unknown as Worker).postMessage({ expansion: { written: total } });
+      Atomics.wait(this.flag, 0, 0);
+      if (Atomics.load(this.flag, 0) !== 1) throw this.stopped = new Error(EXPANSION_STOPPED);
+      this.allowance = this.next[0];
+    }
+  }
+}
+
 export class WriteBudget {
   readonly limit: number;
   used = 0;
   failure?:Error;
+  /** Total output, across every stage of the job, at which the user is asked whether to keep going. */
+  checkpoint?: number;
+  ask?: (written: number) => Promise<boolean>;
+  gate?: ExpansionGate;
   constructor(limit?: number, internalGrant = false) {
     if (internalGrant && Number.isSafeInteger(limit) && limit! >= 0) this.limit = limit!;
     else this.limit = outputLimit(limit);
@@ -19,10 +51,11 @@ export class WriteBudget {
   get remaining(): number { return this.limit - this.used; }
   charge(bytes: number): void {
     if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error('Invalid output write size');
+    this.gate?.check(this.used + bytes);
     if (bytes > this.remaining) throw this.exceeded();
     this.used += bytes;
   }
-  exceeded():Error { return this.failure??=new Error('Write budget exceeded. Raise Write budget in Advanced safety; temporary stages and scratch writes count too.'); }
+  exceeded():Error { return this.failure??=new Error('Write budget exceeded; temporary stages and scratch writes count too.'); }
   record(used: unknown, grant: number): void {
     if (typeof used !== 'number' || !Number.isSafeInteger(used) || used < 0 || used > grant) throw new Error('Worker did not report a valid write-budget counter');
     this.charge(used);
@@ -71,4 +104,24 @@ export function installWriteBudget(module: any, budget: WriteBudget): void {
       return allocate(stream, offset, length);
     };
   }
+}
+
+/** Page side: the channel a job's worker pauses on, or nothing when this job has no question to ask or the page cannot share memory. */
+export function expansionChannel(budget: WriteBudget): ExpansionChannel | undefined {
+  if (budget.checkpoint === undefined || !budget.ask || typeof SharedArrayBuffer === 'undefined' || !globalThis.crossOriginIsolated) return;
+  return { shared: new SharedArrayBuffer(16), allowance: Math.max(0, budget.checkpoint - budget.used) };
+}
+/** Without shared memory a worker cannot pause, so the question point becomes where it stops. */
+export function expansionGrant(budget: WriteBudget, grant: number, channel?: ExpansionChannel): number {
+  return !channel && budget.checkpoint !== undefined && budget.ask ? Math.min(grant, Math.max(0, budget.checkpoint - budget.used)) : grant;
+}
+/** Puts a paused worker's question to the user, then lets it keep going or stop. */
+export async function answerExpansion(budget: WriteBudget, channel: ExpansionChannel, workerWritten: number, alive: () => boolean): Promise<void> {
+  const total = budget.used + workerWritten;
+  const keep = await (budget.ask?.(total) ?? Promise.resolve(false)).catch(() => false);
+  if (!alive()) return;
+  const flag = new Int32Array(channel.shared, 0, 1);
+  if (keep) { budget.checkpoint = total * EXPANSION_STEP; new Float64Array(channel.shared, 8, 1)[0] = budget.checkpoint - budget.used; Atomics.store(flag, 0, 1); }
+  else Atomics.store(flag, 0, 2);
+  Atomics.notify(flag, 0);
 }

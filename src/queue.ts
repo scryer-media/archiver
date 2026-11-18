@@ -5,12 +5,13 @@ import {ProgressTracker,duration,type ProgressSample} from './progress';
 import {recoveryName,archiveStem,type ArchiveGroup} from './archive-groups';
 import {isOutputLimited} from '../engine/output-budget';
 import {checkRecovery} from './recovery';
+import {askExpansion,expansionMessage,type ExpansionPause} from './expansion';
 
 type JobState='queued'|'active'|'needs-folder'|'done'|'failed'|'cancelled';
 type Output={name:string;blob:Blob};
 /** How an archive opened on screen goes out, as its Extract screen decided: streamed to Downloads, as one ZIP download, or kept in this tab. */
 export interface JobDelivery {stream:boolean;zip:boolean;totalBytes?:number}
-interface Job extends ArchiveGroup {destination?:FileSystemDirectoryHandle;delivery?:JobDelivery;id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];directories?:string[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string}
+interface Job extends ArchiveGroup {destination?:FileSystemDirectoryHandle;delivery?:JobDelivery;id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];directories?:string[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string;pause?:ExpansionPause}
 interface Helpers {isArchive:(name:string)=>boolean;svg:(name:string)=>string;esc:(text:string)=>string;size:(bytes:number)=>string;canStart:()=>boolean;notice:(message:string,error?:boolean)=>void;addArchives:()=>void;save:(file:Output)=>void;streaming:()=>boolean}
 const folderAccess=()=>'showDirectoryPicker' in window;
 const PAGE=200;
@@ -46,6 +47,7 @@ export class ExtractionQueue {
   else if(action==='clear')this.clearFinished();
   else if(action==='remove'&&job?.state==='queued'){this.jobs=this.jobs.filter(item=>item!==job);this.render();}
   else if(action==='cancel'&&job&&job===this.active)void this.cancelActive();
+  else if((action==='keep'||action==='stop')&&job?.pause)job.pause.answer(action==='keep');
   else if(action==='save'&&job?.outputs){if(job.outputs.length===1)this.helpers.save(job.outputs[0]);else{job.open=!job.open;job.shown=job.shown||PAGE;this.render();}}
   else if(action==='more'&&job){job.shown=(job.shown||PAGE)+PAGE;this.render();}
   else if(action==='save-all'&&job?.outputs&&!job.saving)void this.saveAll(job);
@@ -66,6 +68,7 @@ export class ExtractionQueue {
  private async loop(){
   for(let job=this.jobs.find(item=>item.state==='queued');job&&!this.stopping;job=this.jobs.find(item=>item.state==='queued')){
    const engine=this.engine=new ArchiveEngine(update=>this.progress(engine,update));
+   engine.onExpansion=askExpansion(pause=>{job!.pause=pause;this.render();});
    this.active=job;job.state='active';this.tracker.start(performance.now());this.render();
    try{
     // Dispose does not settle every native call, so cancellation also releases the loop directly.
@@ -134,6 +137,7 @@ export class ExtractionQueue {
  private progress(engine:ArchiveEngine,update:ProgressSample){if(engine!==this.engine)return;this.tracker.update(update,performance.now());this.renderActive();}
  private async cancelActive(){
   const job=this.active,engine=this.engine;if(!job||!engine)return;
+  job.pause?.answer(false);
   job.state='cancelled';job.detail='Cancelled · partial output removed';this.engine=undefined;this.abortActive?.();this.render();
   if(!await engine.dispose())job.detail='Cancelled · browser is still releasing temporary files';
   this.render();
@@ -156,6 +160,7 @@ export class ExtractionQueue {
  }
  private row(job:Job){
   const {svg,esc}=this.helpers,name=esc(job.name);
+  if(job.state==='active'&&job.pause)return `<li class="queue-row active paused" data-row="${job.id}"><span class="file-symbol warn">${svg('alert')}</span><div class="queue-main"><span class="file-name">${name}</span><span class="queue-detail" role="alert">${esc(expansionMessage(job.pause,this.helpers.size))}</span></div><div class="queue-pause-actions"><button class="quiet" data-queue="stop" data-job="${job.id}">Stop</button><button class="primary" data-queue="keep" data-job="${job.id}">Keep going</button></div></li>`;
   if(job.state==='active')return `<li class="queue-row active" data-row="${job.id}"><span class="file-symbol">${svg('box')}</span><div class="queue-main"><div class="queue-line"><span class="file-name">${name}</span><span class="queue-percent" data-field="percent"></span></div><progress max="100" aria-label="Progress for ${name}"></progress><div class="queue-line queue-stats"><span data-field="bytes"></span><span data-field="files"></span><span data-field="rate"></span><span data-field="eta"></span></div></div><button class="queue-x" data-queue="cancel" data-job="${job.id}" aria-label="Cancel ${name}">${svg('close')}</button></li>`;
   const symbol=job.state==='needs-folder'?`<span class="file-symbol muted">${svg('folder')}</span>`:job.state==='done'?`<span class="file-symbol ok">${svg('check')}</span>`:job.state==='failed'?`<span class="file-symbol failed">${svg('alert')}</span>`:job.state==='cancelled'?`<span class="file-symbol muted">${svg('close')}</span>`:`<span class="file-symbol">${svg('box')}</span>`;
   const detail=job.state==='queued'?this.meta(job):esc(job.saving||job.detail||'');
@@ -174,7 +179,7 @@ export class ExtractionQueue {
  }
  private renderActive(){
   if(this.started&&!this.finishedAt){const elapsed=this.host.querySelector('[data-field="elapsed"]');if(elapsed)elapsed.textContent=duration((performance.now()-this.started)/1000);}
-  const job=this.active,row=job&&this.host.querySelector(`[data-row="${job.id}"]`);if(!row)return;
+  const job=this.active,row=job&&this.host.querySelector(`[data-row="${job.id}"]`);if(!row||job.pause)return;
   const {size}=this.helpers,view=this.tracker.view(performance.now()),sample=view.sample,bar=row.querySelector('progress')!;
   const set=(field:string,text:string)=>{const target=row.querySelector(`[data-field="${field}"]`);if(target)target.textContent=text;};
   if(view.percent===undefined)bar.removeAttribute('value');else bar.value=view.percent;

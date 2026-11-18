@@ -1,4 +1,4 @@
-import {WriteBudget,outputLimit,markOutputLimited} from './output-budget';
+import {WriteBudget,outputLimit,markOutputLimited,expansionChannel,expansionGrant,answerExpansion} from './output-budget';
 import { acquireStorageLease, cleanAbandonedStorage, removeStorage, type StorageLease } from './storage';
 export interface EntryMetadata { modifiedTime?: number; createdTime?: number; changedTime?: number; accessedTime?: number; unixMode?: number; windowsAttributes?: number; uid?: number; gid?: number; owner?: string; group?: string; link?: { kind: 'symbolic' | 'hard' | 'copy' | 'unknown' | 'junction'; target?: string; targetIsDirectory?: boolean }; sparse?: { logicalSize: number; extents: { offset: number; length: number }[] } }
 export interface ArchiveEntry { name: string; size: number; isDirectory: boolean; isLink?: boolean; metadata?: EntryMetadata }
@@ -32,7 +32,7 @@ export class ArchiveEngine {
     if (this.active) return Promise.reject(new Error('An operation is already running'));
     let budget:WriteBudget;
     try{outputLimit(options.outputLimitBytes);budget=this.jobBudget?.()??new WriteBudget(options.outputLimitBytes);}catch(error){return Promise.reject(error);}
-    const grant=budget.remaining;
+    const expansion=expansionChannel(budget),grant=expansionGrant(budget,budget.remaining,expansion);
 
     this.active = true;
     const generation = ++this.generation;
@@ -61,6 +61,7 @@ export class ArchiveEngine {
         worker.onmessage = ({ data }) => {
           if(generation!==this.generation||finished)return;
           if(data.progress){this.onProgress?.(data.progress);return;}
+          if(data.expansion){if(expansion)void answerExpansion(budget,expansion,data.expansion.written,()=>generation===this.generation&&!finished);return;}
           try{if(!budgetRecorded){budget.record(data.writeBudgetUsed,grant);budgetRecorded=true;}}catch(error){finish(error===budget.failure?markOutputLimited(error as Error):error as Error);return;}
           if(data.error)finish(data.outputLimited===true?markOutputLimited(new Error(data.error)):new Error(data.error));else if(deliveryDone)void deliveryDone.then(()=>finish(undefined,data),error=>finish(error));else finish(undefined,data);
         };
@@ -100,7 +101,7 @@ export class ArchiveEngine {
         // its helper. Native WASM receives only a SAB and command port: passing
         // the stream through the blocked native worker would deadlock its proxy.
         const requestOptions={...options,outputLimitBytes:budget.limit,writeBudgetGrant:grant,downloadStream:undefined,downloadBridge};
-        worker.postMessage({ op, files, password: options.password, solid: options.solid, options:requestOptions, names: files.map(file => file.webkitRelativePath || file.name), temporaryDirectory: lease.name, progressPort: downloadBridge?undefined:channel?.port2 }, downloadBridge?[downloadBridge.port]:channel?[channel.port2]:[]);
+        worker.postMessage({ op, files, password: options.password, solid: options.solid, options:requestOptions, names: files.map(file => file.webkitRelativePath || file.name), temporaryDirectory: lease.name, expansion, progressPort: downloadBridge?undefined:channel?.port2 }, downloadBridge?[downloadBridge.port]:channel?[channel.port2]:[]);
       })().catch(error => { if (generation === this.generation&&this.active) { this.worker?.terminate();this.stopHelper(); this.progressPort?.close(); this.progressPort=undefined; this.worker = undefined; this.active = false; this.reject = undefined; if (ownedLease) { this.pendingCleanup.push(removeStorage(ownedLease)); this.leases = this.leases.filter(item => item !== ownedLease); } reject(error); } });
     });
   }
