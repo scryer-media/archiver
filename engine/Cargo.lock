@@ -46,13 +46,13 @@ name = "archive-engine"
 version = "0.1.0"
 dependencies = [
  "brotli",
- "bzip2-turbo 0.2.1",
+ "bzip2-turbo",
  "flate2",
  "lamfold",
  "lamfold-iso",
  "lamfold-udf",
  "lz4_flex",
- "lzma-turbo 0.12.0",
+ "lzma-turbo",
  "par2-rs",
  "par3-rs",
  "serde",
@@ -156,13 +156,6 @@ name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc652a48c352aef3ea3aed32080501cf3ef6ed5da78602a020c991775b0aff04"
-
-[[package]]
-name = "bzip2-turbo"
-version = "0.2.1"
-dependencies = [
- "crc-turbo",
-]
 
 [[package]]
 name = "bzip2-turbo"
@@ -602,14 +595,6 @@ dependencies = [
 [[package]]
 name = "lzma-turbo"
 version = "0.12.0"
-dependencies = [
- "crc-turbo",
- "sha2",
-]
-
-[[package]]
-name = "lzma-turbo"
-version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8c0ad0959852261cd7449e6de6da34dc6cc310d0dc5fa459bb65f5bd81afa37e"
 dependencies = [
@@ -879,13 +864,13 @@ checksum = "5d7d76557616e3a938b82b64a13f0fcadb358249aa38e18fa0149ca6700ca6b0"
 dependencies = [
  "aes",
  "brotli",
- "bzip2-turbo 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "bzip2-turbo",
  "cbc",
  "flate2",
  "getrandom",
  "js-sys",
  "lz4_flex",
- "lzma-turbo 0.12.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lzma-turbo",
  "ppmd-turbo",
  "wasm-bindgen",
  "zeroize",

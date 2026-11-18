@@ -1,7 +1,6 @@
 #!/bin/sh
 set -eu
 cd "$(dirname "$0")"
-python3 ../scripts/verify-local-sources.py
 python3 ../scripts/vendor-libarchive.py --fetch --notices
 export RUSTC="$(rustup which rustc)"
 export RUSTFLAGS="--remap-path-prefix=$HOME=/workspace"

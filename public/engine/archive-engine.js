@@ -4154,11 +4154,11 @@ Module["WORKERFS"] = WORKERFS;
 // End JS library exports
 // end include: postlibrary.js
 // Imports from the Wasm binary.
-var _malloc, _free, _engine_free, _engine_heap_bytes, _engine_run, _main, _emscripten_stack_get_end, _emscripten_stack_get_base, ___trap, _emscripten_stack_init, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, ___set_stack_limits, memory, __indirect_function_table, wasmMemory;
+var _free, _malloc, _engine_free, _engine_heap_bytes, _engine_run, _main, _emscripten_stack_get_end, _emscripten_stack_get_base, ___trap, _emscripten_stack_init, __emscripten_stack_restore, __emscripten_stack_alloc, _emscripten_stack_get_current, ___set_stack_limits, memory, __indirect_function_table, wasmMemory;
 
 function assignWasmExports(wasmExports) {
-  _malloc = Module["_malloc"] = wasmExports["N"];
-  _free = Module["_free"] = wasmExports["O"];
+  _free = Module["_free"] = wasmExports["N"];
+  _malloc = Module["_malloc"] = wasmExports["O"];
   _engine_free = Module["_engine_free"] = wasmExports["P"];
   _engine_heap_bytes = Module["_engine_heap_bytes"] = wasmExports["Q"];
   _engine_run = Module["_engine_run"] = wasmExports["R"];

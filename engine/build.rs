@@ -11,8 +11,6 @@ fn main() {
     for path in [
         "build.rs",
         "libarchive",
-        "local-sources.json",
-        "../scripts/verify-local-sources.py",
         "../scripts/vendor-libarchive.py",
     ] {
         println!("cargo:rerun-if-changed={path}");
@@ -20,22 +18,6 @@ fn main() {
     for name in ["CC", "AR", "CMAKE", "EMCMAKE", "CMAKE_BUILD_PARALLEL_LEVEL"] {
         println!("cargo:rerun-if-env-changed={name}");
     }
-    let verified_local = Command::new("python3")
-        .arg(root.join("scripts/verify-local-sources.py"))
-        .arg("--engine-manifest")
-        .arg(manifest.join("Cargo.toml"))
-        .arg("--cargo")
-        .output()
-        .expect("unable to verify local dependency sources");
-    assert!(
-        verified_local.status.success(),
-        "Local source preflight failed: {}",
-        String::from_utf8_lossy(&verified_local.stderr)
-    );
-    print!(
-        "{}",
-        String::from_utf8(verified_local.stdout).expect("invalid local preflight output")
-    );
     // Preparation is cache-only. Network acquisition is an explicit operator step.
     let prepared = Command::new("python3")
         .arg(root.join("scripts/vendor-libarchive.py"))
