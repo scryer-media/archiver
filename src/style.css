@@ -69,7 +69,6 @@ select{appearance:none;-webkit-appearance:none;background-image:url(/chevron.svg
 .privacy-grid>div{border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:20px}
 .privacy-icon{width:36px;height:36px;border-radius:8px;background:var(--raised);color:var(--link);display:flex;align-items:center;justify-content:center}
 .privacy-grid h3{margin:16px 0 0;font-size:14px;font-weight:600}.privacy-grid p{margin:4px 0 0;font-size:13px;color:var(--muted)}
-.install-card{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin-top:16px;padding:20px 24px;border:1px solid var(--border);background:var(--panel);border-radius:14px}.install-card>img{width:40px;height:40px}.install-card p{flex:1 1 200px;margin:0;font-size:15px;font-weight:600}
 
 footer{max-width:920px;margin:96px auto 0;padding:56px 24px 48px;border-top:1px solid var(--border);display:flex;flex-direction:column;align-items:center;gap:16px;text-align:center}
 footer>span{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
