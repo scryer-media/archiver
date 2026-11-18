@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src=".github/readme/extract.png" alt="Archiver showing the contents of a ZIP file" width="800">
+  <img src=".github/readme/extract.png" alt="Archiver showing the contents of a ZIP file" width="720">
 </p>
 
 ## Features
