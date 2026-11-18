@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <img src=".github/readme/extract.png" alt="Archiver showing the contents of a ZIP file" width="720">
+  <a href="https://archiver.scryer.media"><img src=".github/readme/extract.png" alt="Archiver showing the contents of a ZIP file" width="720"></a>
 </p>
 
 ## Features
