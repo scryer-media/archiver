@@ -5,6 +5,7 @@ import {creationPlans} from '../engine/create-plan';
 import type {CreateOptions,ExtractionOptions,ArchiveEntry,EntryMetadata} from '../engine/client';
 import {destinationDirectory,destinationParent} from '../engine/destination';
 import {ZipWriter,BlobReader,BlobWriter,configure} from '@zip.js/zip.js';
+import {ZipStream} from '../engine/zip-stream';
 import {openStrictZip,ZIP_STRICT_OPTIONS,exactZipOutput,validateZipPaths} from './zip-security';
 configure({useWebWorkers:false});
 const safe = (name: string) => {
@@ -46,7 +47,24 @@ self.onmessage=async({data})=>{
  const inputProgress=(bytes:number)=>{processedBytes=Math.max(processedBytes,bytes);emit();};
  const publish=(result:Record<string,unknown>)=>{if(downloadStream)result={...result,files:[],downloadSent:true,sentBytes:outputBytes};emit(true);self.postMessage({progress:{phase:'finalizing',message:downloadStream?'Sent bytes to browser download':'Preparing completed results',outputBytes,filesProcessed,totalFiles}});self.postMessage({...result,writeBudgetUsed:budget!.used});};
  let downloadUsed=false;
- const output = async (name?:string) => {
+ // A ZIP download carries every extracted file through the one download stream.
+ const zipWriter=downloadStream&&extraction?.zipDownload===true?downloadStream.getWriter():undefined;
+ const zipOut=zipWriter?new ZipStream(bytes=>zipWriter.write(bytes)):undefined;
+ const output = async (name?:string,modified?:number) => {
+  if(zipOut){
+   if(!name)throw Error('ZIP download entries need a name');
+   if(modified!==undefined)zipOut.setTime(name,modified);
+   await zipOut.begin(safe(name));
+   const writer=new WritableStream<Uint8Array>({
+    async write(chunk){
+     try{budget!.charge(chunk.byteLength);for(let offset=0;offset<chunk.byteLength;offset+=1024*1024)await zipOut.write(chunk.subarray(offset,offset+1024*1024));outputBytes+=chunk.byteLength;if(unit==='output')processedBytes+=chunk.byteLength;emit();}
+     catch(error){await zipWriter!.abort(error).catch(()=>{});throw error;}
+    },
+    async close(){await zipOut.end();if(unit==='output')filesProcessed++;emit();},
+    async abort(reason){await zipWriter!.abort(reason).catch(()=>{});},
+   });
+   return {writer,finish:()=>new Blob()};
+  }
   if(downloadStream&&downloadUsed)throw Error('Download requires exactly one output file');
   if(downloadStream)downloadUsed=true;
   const target=outputDirectory&&name?await destinationParent(outputDirectory,name):undefined;
@@ -103,9 +121,11 @@ self.onmessage=async({data})=>{
   const totals={written:0,limit:totalBytes},result:{name:string;blob:Blob;metadata?:EntryMetadata}[]=[];
   for(const entry of entries)if(entry.directory)await entry.getData!(exactZipOutput(new WritableStream<Uint8Array>(),0,totals),{...ZIP_STRICT_OPTIONS,password});
   if(outputDirectory)for(const entry of entries)if(entry.directory){await destinationDirectory(outputDirectory,entry.filename.replace(/\/$/,''));}
-  for(const entry of entries){if(entry.directory)continue;progress('Extracting '+entry.filename);const target=await output(entry.filename);const source=zip.sources.get(entry.filename)!;await source.getData!(exactZipOutput(target.writer,source.uncompressedSize,totals),{...ZIP_STRICT_OPTIONS,password});if(!outputDirectory&&!downloadStream)result.push({name:entry.filename,blob:preserveFileMetadata(await target.finish(),entry.filename,zip.metadata.get(entry.filename)),metadata:zip.metadata.get(entry.filename)});}
+  if(zipOut)for(const entry of entries)if(entry.directory){const name=safe(entry.filename).replace(/\/$/,''),modified=zip.metadata.get(entry.filename)?.modifiedTime;if(modified!==undefined)zipOut.setTime(name,modified);await zipOut.directory(name);}
+  for(const entry of entries){if(entry.directory)continue;progress('Extracting '+entry.filename);const target=await output(entry.filename,zip.metadata.get(entry.filename)?.modifiedTime);const source=zip.sources.get(entry.filename)!;await source.getData!(exactZipOutput(target.writer,source.uncompressedSize,totals),{...ZIP_STRICT_OPTIONS,password});if(!outputDirectory&&!downloadStream)result.push({name:entry.filename,blob:preserveFileMetadata(await target.finish(),entry.filename,zip.metadata.get(entry.filename)),metadata:zip.metadata.get(entry.filename)});}
   if(totals.written!==totalBytes)throw Error('ZIP aggregate output size mismatch');
+  if(zipOut){await zipOut.finish();await zipWriter!.close();}
   publish({metadata,savedFiles:outputDirectory?entries.filter(entry=>!entry.directory).length:undefined,directories:entries.filter(entry=>entry.directory).map(entry=>entry.filename.replace(/\/$/,'')),files:result});
  }finally{await zip.reader.close();}
- }catch(error){self.postMessage({writeBudgetUsed:budget?.used??0,outputLimited:!!budget?.failure,error:error instanceof Error?(error.message||error.name||'Archive operation failed'):(String(error)||'Archive operation failed'),nativeCodecError:error instanceof NativeStreamCodecError});}
+ }catch(error){await zipWriter?.abort(error).catch(()=>{});self.postMessage({writeBudgetUsed:budget?.used??0,outputLimited:!!budget?.failure,error:error instanceof Error?(error.message||error.name||'Archive operation failed'):(String(error)||'Archive operation failed'),nativeCodecError:error instanceof NativeStreamCodecError});}
 };

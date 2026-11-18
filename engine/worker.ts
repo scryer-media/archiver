@@ -38,6 +38,7 @@ self.onmessage = async ({ data }) => {
       try{return JSON.parse(module.UTF8ToString(pointer));}finally{module._engine_free(pointer);}
     };
     let totals:{totalBytes:number;totalFiles:number}|undefined;
+    let members:any[]|undefined;
     if(op==='extract'){
       const candidate=files[Math.max(0,names.findIndex(name=>/(\.001|\.part0*1\.rar)$/i.test(name)))];
       const signature=new Uint8Array(await candidate.slice(0,8).arrayBuffer());
@@ -46,15 +47,16 @@ self.onmessage = async ({ data }) => {
         self.postMessage({progress:{phase:'metadata',message:'Reading archive member sizes'}});
         const metadata=runEngine({...options,op:'list',paths:names.map(name=>'/input/'+name),password:password??'',maxOutput:Number.MAX_SAFE_INTEGER});
         if(metadata.error)throw new Error(metadata.error);
-        const members=metadata.entries?.filter((entry:any)=>!entry.isDirectory);
+        members=metadata.entries?.filter((entry:any)=>!entry.isDirectory);
         const totalBytes=members?.reduce((sum:number,entry:any)=>sum+entry.size,0);
         if(Array.isArray(members)&&members.every((entry:any)=>Number.isSafeInteger(entry.size)&&entry.size>=0)&&Number.isSafeInteger(totalBytes))totals={totalBytes,totalFiles:members.length};
       }
     }
     if(options.downloadBridge&&options.outputDirectory)throw new Error('Choose one output destination');
     if (options.downloadBridge) {
-      if(op==='extract'&&totals&&totals.totalFiles!==1)throw new Error('Streamed download extraction requires exactly one file');
+      if(op==='extract'&&totals&&totals.totalFiles!==1&&!options.zipDownload)throw new Error('Streamed download extraction requires exactly one file');
       direct=DirectOutput.downloadBridge(module,options.downloadBridge,totals);
+      if(options.zipDownload)for(const entry of members??[])if(Number.isFinite(entry.metadata?.modifiedTime))direct.setTime(entry.name,entry.metadata.modifiedTime);
       direct.mount('/out');module.FS.mkdir('/out/.work');
     }
     if (options.outputDirectory) {

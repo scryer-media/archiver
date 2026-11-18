@@ -5,6 +5,12 @@ import { createDownload, type DownloadJob } from '../engine/download';
 import { ArchiveEngine as NativeEngine, type EngineProgress, type EngineResult, type CreateOptions, type ExtractionOptions } from '../engine/client';
 import { createDestination, removeDestination, type DestinationJob } from '../engine/destination';
 import { acquireStorageLease, removeStorage, type StorageLease } from '../engine/storage';
+/** The ZIP download's name: the archive's name without its archive extensions, such as `photos.part01.rar` → `photos.zip`. */
+export function zipDownloadName(files:File[]):string{
+  const first=[...files].map(file=>file.name).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))[0]??'';
+  const stem=first.replace(/\.(tar\.[a-z0-9]+|tgz|zip|7z|rar|tar|r\d\d|z\d\d|\d{3})$/i,'').replace(/\.(part\d+|7z|zip|rar)$/i,'');
+  return (stem||'extracted')+'.zip';
+}
 export class ArchiveEngine {
   private downloads: DownloadJob[] = [];
   private destinations: DestinationJob[] = [];
@@ -66,13 +72,22 @@ export class ArchiveEngine {
     },options.outputLimitBytes);
   }
   list(files: File[], password?: string, format?: string, options:ExtractionOptions={}) { return this.exclusive(() => this.listInternal(files, password, format,options),options.outputLimitBytes); }
-  extract(files: File[], password?: string, format?: string, destination?: FileSystemDirectoryHandle, delivery?: 'download',options:ExtractionOptions={}) {
+  /**
+   * Extracts an archive. `delivery: 'download'` streams its one file to the browser's Downloads;
+   * `delivery: 'zip'` streams every file it holds as one ZIP, for browsers that cannot write to a folder.
+   */
+  extract(files: File[], password?: string, format?: string, destination?: FileSystemDirectoryHandle, delivery?: 'download'|'zip',options:ExtractionOptions={}) {
     return this.exclusive(async () => {
+      if(delivery==='zip'&&!this.rawStream(files,format)){
+        if(destination)throw new Error('Choose one output destination');
+        return this.deliver(zipDownloadName(files),stream=>this.extractInternal(files,password,format,undefined,stream,{...options,zipDownload:true}));
+      }
+      if(delivery==='zip')delivery='download';
       if(delivery==='download'){
         if(destination)throw new Error('Choose one output destination');
         if(this.isTarStream(files))throw new Error('Streamed downloads of compressed TAR extraction are not supported; choose a folder');
         const epoch=this.cancellationEpoch;
-        const raw=files.length===1&&(/\.(gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib)$/i.test(files[0].name)||!!format&&['gz','zstd','br','xz','bz2','lzma','lz4','deflate','zlib'].includes(format));
+        const raw=this.rawStream(files,format);
         let name=files[0]?.name.replace(/\.[^.]+$/,'')||'decoded.bin';
         if(!raw){
           const metadata=await this.listInternal(files,password,format,options),members=metadata.entries?.filter(entry=>!entry.isDirectory);
@@ -133,6 +148,8 @@ export class ArchiveEngine {
     catch(error){job.cancel();throw error;}
     finally{job.release();this.downloads=this.downloads.filter(item=>item!==job);}
   }
+  /** A lone compressed stream (not a TAR): it decodes to one file, so it never needs a ZIP. */
+  private rawStream(files:File[],format?:string){return files.length===1&&!this.isTarStream(files)&&(/\.(gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib)$/i.test(files[0].name)||!!format&&['gz','zstd','br','xz','bz2','lzma','lz4','deflate','zlib'].includes(format));}
   private checkEpoch(epoch: number): void { if (epoch !== this.cancellationEpoch) throw new Error('Operation cancelled'); }
   private async fallbackFiles(files: File[]): Promise<File[] | undefined> {
     if (files.length !== 1) return;
@@ -174,7 +191,7 @@ export class ArchiveEngine {
           this.stage='extract-tar';return await this.native.extract([new File([decoded[0]],'archive.tar')],undefined,'tar',outputDirectory,undefined,options);
         }finally{await outputDirectory.removeEntry(scratch,{recursive:true});}
       }
-      const decoded = await this.decodeTar(files[0], password, format, epoch); this.checkEpoch(epoch); this.stage='extract-tar';return this.native.extract([decoded],undefined,'tar',undefined,undefined,options);
+      const decoded = await this.decodeTar(files[0], password, format, epoch); this.checkEpoch(epoch); this.stage='extract-tar';return this.native.extract([decoded],undefined,'tar',undefined,downloadStream,options);
     }
     const streamFormat=format||files[0]?.name.toLowerCase().match(/\.(gz|zstd|zst|br|deflate|zlib|xz|bz2|bzip2|lzma|lz4)$/)?.[1];
     if(files.length===1&&streamFormat&&['gz','gzip','zstd','zst','br','brotli','deflate','zlib','xz','bz2','bzip2','lzma','lz4'].includes(streamFormat)){

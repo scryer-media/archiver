@@ -2,7 +2,7 @@ import {WriteBudget,outputLimit,markOutputLimited} from './output-budget';
 import { acquireStorageLease, cleanAbandonedStorage, removeStorage, type StorageLease } from './storage';
 export interface EntryMetadata { modifiedTime?: number; createdTime?: number; changedTime?: number; accessedTime?: number; unixMode?: number; windowsAttributes?: number; uid?: number; gid?: number; owner?: string; group?: string; link?: { kind: 'symbolic' | 'hard' | 'copy' | 'unknown' | 'junction'; target?: string; targetIsDirectory?: boolean }; sparse?: { logicalSize: number; extents: { offset: number; length: number }[] } }
 export interface ArchiveEntry { name: string; size: number; isDirectory: boolean; isLink?: boolean; metadata?: EntryMetadata }
-export interface ExtractionOptions { outputLimitBytes?: number; links?: 'reject' | 'copy-safe'; streamBackend?: 'auto' | 'native' | 'wasm' }
+export interface ExtractionOptions { outputLimitBytes?: number; links?: 'reject' | 'copy-safe'; streamBackend?: 'auto' | 'native' | 'wasm'; /** With a download stream: pack every extracted file into one ZIP. */ zipDownload?: boolean }
 export interface EngineResult { writeBudgetUsed?: number; writeBudgetLimit?: number; downloadSent?: boolean; downloadName?: string; sentBytes?: number; savedFiles?: number; savedDirectory?: string; entries?: ArchiveEntry[]; metadata?: ArchiveEntry[]; directories?: string[]; files: { name: string; blob: Blob; metadata?: EntryMetadata }[]; message?: string; complete?: boolean; status?: string; sets?: unknown[]; metrics?: { inputReads?:{readCalls:number;backingReads:number;backingBytes:number;cacheHitBytes:number;peakCacheBytes:number}; diskBacked: boolean; streamed?: boolean; writtenBytes?: number; wasmMemoryBytes?: number } }
 export interface EngineProgress { inputReads?:{readCalls:number;backingReads:number;backingBytes:number;cacheHitBytes:number;peakCacheBytes:number}; phase: string; message: string; writtenBytes?: number; processedBytes?: number; totalBytes?: number; outputBytes?: number; filesProcessed?: number; totalFiles?: number; unit?: 'input' | 'output'; percent?: number }
 export interface FileCreateOptions { name: string; codec?: string; filter?: string; level?: number; dictionarySize?: number; deltaDistance?: number }
@@ -89,7 +89,7 @@ export class ArchiveEngine {
             helper.onmessage=({data})=>{if(data.ready){clearTimeout(timer);this.helperStop=undefined;ready();}};
             helper.onerror=event=>{clearTimeout(timer);failed(new Error(event.message||'Download helper failed'));};
             helper.onmessageerror=()=>{clearTimeout(timer);failed(new Error('Download helper message failed'));};
-            try{helper.postMessage({init:true,download,shared,commandPort:commands.port1,progress:channel?.port2},[download,commands.port1,...(channel?[channel.port2]:[])]);}catch(error){clearTimeout(timer);failed(error);}
+            try{helper.postMessage({init:true,download,zip:options.zipDownload===true,shared,commandPort:commands.port1,progress:channel?.port2},[download,commands.port1,...(channel?[channel.port2]:[])]);}catch(error){clearTimeout(timer);failed(error);}
           }).catch(error=>{commands.port2.close();throw error;});
           if(generation!==this.generation){helper.terminate();commands.port2.close();return;}
           helper.onerror=event=>finish(new Error(event.message||'Download helper failed'));

@@ -106,6 +106,8 @@ export class DirectOutput {
     };
     fs.mount({mount:(mount:any)=>decorate(memory.mount(mount))},{},path);
   }
+  /** Modification time, in milliseconds, for an entry of a ZIP download. */
+  setTime(path:string,ms:number):void{this.call('time',path,ms);}
   finish():void{this.call('finish');}
   close():void{if('terminate' in this.worker)this.worker.terminate();else this.worker.close();}
 }

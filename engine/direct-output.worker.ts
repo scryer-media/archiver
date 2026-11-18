@@ -1,6 +1,9 @@
 import { destinationParent, destinationDirectory, destinationPathRegistry } from './destination';
+import { ZipStream } from './zip-stream';
 let root: FileSystemDirectoryHandle;
 let download:WritableStreamDefaultWriter<Uint8Array>|undefined,downloadPath:string|undefined,downloadPosition=0,downloadClosed=false;
+// Set when a download packs every extracted file into one ZIP instead of carrying a single file.
+let zip:ZipStream|undefined;
 let state: Int32Array, payload: Uint8Array, progress: MessagePort | undefined;
 const writers = new Map<string, FileSystemWritableFileStream>();
 const registerPath=destinationPathRegistry();
@@ -37,7 +40,7 @@ const commit=async(path:string,writer:FileSystemWritableFileStream)=>{
 };
 const handleMessage = async ({data}:MessageEvent) => {
   if (data.init) {
-    download=data.download?.getWriter();root=data.directory;state=new Int32Array(data.shared,0,4);payload=new Uint8Array(data.shared,16);progress=data.progress;totals=data.totals;report(false,true);
+    download=data.download?.getWriter();if(download&&data.zip){const sink=download;zip=new ZipStream(bytes=>sink.write(bytes));}root=data.directory;state=new Int32Array(data.shared,0,4);payload=new Uint8Array(data.shared,16);progress=data.progress;totals=data.totals;report(false,true);
     if(data.commandPort)data.commandPort.onmessage=handleMessage;
     self.postMessage({ready:true});return;
   }
@@ -47,6 +50,18 @@ const handleMessage = async ({data}:MessageEvent) => {
     const {op,path,position,length}=data;
     if(op==='totals'){totals={totalBytes:position,totalFiles:length};report(false,true);Atomics.store(state,1,0);return;}
     if(path)registerPath(path);
+    if(zip){
+      // Files arrive one after another and are written front to back; anything else cannot be streamed.
+      if(op==='mkdir')await zip.directory(path);
+      else if(op==='time')zip.setTime(path,position);
+      else if(op==='open'){if(downloadClosed)throw new Error('ZIP download is already finished');if(zip.current!==path){if(zip.has(path))throw new Error('ZIP download output must be sequential');await zip.begin(path);filesProcessed=zip.fileCount-1;}}
+      else if(op==='write'){if(downloadClosed||path!==zip.current||position!==zip.currentSize||length<0||length>payload.length)throw new Error('ZIP download output must be sequential');await zip.write(payload.slice(0,length));written+=length;report();}
+      else if(op==='truncate'){if(path===zip.current?length!==zip.currentSize:length!==0||zip.has(path))throw new Error('ZIP download output cannot be truncated');}
+      else if(op==='close'){ /* An entry ends when the next one starts or the download finishes. */ }
+      else if(op==='finish'){await zip.finish();await download!.close();downloadClosed=true;filesProcessed=zip.fileCount;report(false,true);}
+      else throw new Error('ZIP download output cannot perform this file operation');
+      Atomics.store(state,1,0);return;
+    }
     if(download){
       if(op==='mkdir'){ /* Parent paths are flattened to the selected download name. */ }
       else if(op==='open'){if(downloadClosed||downloadPath&&downloadPath!==path)throw new Error('Download requires exactly one output file');downloadPath=path;}

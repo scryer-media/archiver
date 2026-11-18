@@ -1,5 +1,6 @@
 import type {ExtractionOptions} from '../engine/client';
-import {ArchiveEngine} from './tool-engine';
+import {ArchiveEngine,zipDownloadName} from './tool-engine';
+import {downloadZip} from './zip-download';
 import {ProgressTracker,duration,type ProgressSample} from './progress';
 import {recoveryName,archiveStem,type ArchiveGroup} from './archive-groups';
 import {isOutputLimited} from '../engine/output-budget';
@@ -7,7 +8,7 @@ import {checkRecovery} from './recovery';
 
 type JobState='queued'|'active'|'needs-folder'|'done'|'failed'|'cancelled';
 type Output={name:string;blob:Blob};
-interface Job extends ArchiveGroup {id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string}
+interface Job extends ArchiveGroup {id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];directories?:string[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string}
 interface Helpers {isArchive:(name:string)=>boolean;svg:(name:string)=>string;esc:(text:string)=>string;size:(bytes:number)=>string;canStart:()=>boolean;notice:(message:string,error?:boolean)=>void;addArchives:()=>void;save:(file:Output)=>void;streaming:()=>boolean}
 const folderAccess=()=>'showDirectoryPicker' in window;
 const PAGE=200;
@@ -22,7 +23,7 @@ async function tabCapacity(budget:number){
 }
 const safePath=(name:string)=>{const parts=name.split('/');if(!name||name.startsWith('/')||/[\\\0:]/.test(name)||parts.some(part=>!part||part==='.'||part==='..'))throw new Error('Unsafe output path: '+name);return parts;};
 
-/** Extracts archive sets one after another. With a chosen folder everything goes there. Without one, an archive holding one file goes to Downloads, and one holding several is kept in this tab when it fits; one too large for the tab waits for a folder. */
+/** Extracts archive sets one after another. With a chosen folder everything goes there. Without one, an archive holding one file goes to Downloads. One holding several is kept in this tab when it fits, and one too large for the tab waits for a folder; where the browser cannot write to a folder it downloads as one ZIP instead. */
 export class ExtractionQueue {
  private jobs:Job[]=[];private next=1;private engine?:ArchiveEngine;private active?:Job;private destination?:FileSystemDirectoryHandle;
  private tracker=new ProgressTracker();private timer?:ReturnType<typeof setInterval>;private started=0;private finishedAt=0;private stopping=false;private abortActive?:()=>void;
@@ -74,19 +75,21 @@ export class ExtractionQueue {
     // Without a folder, an archive holding one file goes to Downloads. Anything else is kept in this tab, but only up to what the tab can hold.
     const inspected=this.destination?undefined:await Promise.race([engine.inspect(inputs,job.password,job.format,job.options),cancelled]);
     const stream=!!inspected?.streamable&&this.helpers.streaming();
-    const budget=job.options.outputLimitBytes!,capacity=this.destination||stream?budget:await tabCapacity(budget),tabLimited=capacity<budget;
+    // A browser that cannot write to a folder takes several files as one ZIP download, at any size.
+    const zip=!this.destination&&!stream&&!folderAccess()&&this.helpers.streaming()?zipDownloadName(inputs):undefined;
+    const budget=job.options.outputLimitBytes!,capacity=this.destination||stream||zip?budget:await tabCapacity(budget),tabLimited=capacity<budget;
     if(job.state==='active'&&tabLimited&&(capacity<=0||inspected?.totalBytes!==undefined&&inspected.totalBytes>capacity))this.needsFolder(job,`Expands to ${this.helpers.size(inspected?.totalBytes??0)}, more than this tab can hold (${this.helpers.size(capacity)}).`);
     else{
      job.streamed=stream;
      let result;
-     try{result=await Promise.race([engine.extract(inputs,job.password,job.format,this.destination,stream?'download':undefined,{...job.options,outputLimitBytes:capacity}),cancelled]);}
+     try{result=await Promise.race([engine.extract(inputs,job.password,job.format,this.destination,stream?'download':zip?'zip':undefined,{...job.options,outputLimitBytes:capacity}),cancelled]);}
      catch(error){if(job.state==='active'&&tabLimited&&isOutputLimited(error)){this.needsFolder(job,`Ran past what this tab can hold (${this.helpers.size(capacity)}).`);result=undefined;}else throw error;}
      if(result&&job.state==='active'){
       const count=result.savedFiles??result.files.length,elapsed=duration(this.tracker.view(performance.now()).elapsedSeconds);
       job.state=result.complete===false?'failed':'done';
-      job.detail=result.complete===false?(result.message||'Incomplete'):`${stream?'Sent to Downloads':`${count} ${count===1?'file':'files'}`}${note} · ${elapsed}`;
+      job.detail=result.complete===false?(result.message||'Incomplete'):`${stream?'Sent to Downloads':zip&&result.downloadSent?`Sent to Downloads as ${result.downloadName||zip}`:`${count} ${count===1?'file':'files'}`}${note} · ${elapsed}`;
       // In-tab results live in the engine's storage, so that engine stays alive until the job is cleared.
-      if(!this.destination&&!stream&&job.state==='done'){job.outputs=result.files;job.engine=engine;if(inspected?.streamable&&result.files.length===1){this.helpers.save(result.files[0]);job.detail=`Sent to Downloads${note} · ${elapsed}`;}}
+      if(!this.destination&&!stream&&!result.downloadSent&&job.state==='done'){job.outputs=result.files;job.directories=result.directories;job.engine=engine;if(inspected?.streamable&&result.files.length===1){this.helpers.save(result.files[0]);job.detail=`Sent to Downloads${note} · ${elapsed}`;}}
      }
     }
    }catch(error){if(job.state==='active'){job.state='failed';job.detail=error instanceof Error?error.message:String(error);}}
@@ -103,7 +106,12 @@ export class ExtractionQueue {
  /** Writes a finished in-tab job's files into a new subfolder of a folder the user picks; without folder access, downloads them one by one. */
  private async saveAll(job:Job){
   const outputs=job.outputs!;
-  if(!folderAccess()){for(const [index,file] of outputs.entries()){job.saving=`Downloading ${index+1} of ${outputs.length}…`;this.render();this.helpers.save(file);await new Promise(resolve=>setTimeout(resolve,300));}job.saving=undefined;this.render();return;}
+  if(!folderAccess()){
+   const name=zipDownloadName(job.files);
+   try{await downloadZip(name,outputs,job.directories??[],{streaming:this.helpers.streaming(),save:this.helpers.save,progress:(done,total)=>{job.saving=`Packing ${done} of ${total}…`;this.render();}});job.detail=`Sent to Downloads as ${name}`;}
+   catch(error){this.helpers.notice(`Downloading ${job.name} stopped: ${(error as Error).message}`,true);}
+   job.saving=undefined;this.render();return;
+  }
   let parent:FileSystemDirectoryHandle;
   try{parent=await (window as any).showDirectoryPicker({mode:'readwrite'});}catch(error){if((error as Error).name!=='AbortError')this.helpers.notice((error as Error).message,true);return;}
   try{
@@ -148,7 +156,7 @@ export class ExtractionQueue {
   if(job.state==='active')return `<li class="queue-row active" data-row="${job.id}"><span class="file-symbol">${svg('box')}</span><div class="queue-main"><div class="queue-line"><span class="file-name">${name}</span><span class="queue-percent" data-field="percent"></span></div><progress max="100" aria-label="Progress for ${name}"></progress><div class="queue-line queue-stats"><span data-field="bytes"></span><span data-field="files"></span><span data-field="rate"></span><span data-field="eta"></span></div></div><button class="queue-x" data-queue="cancel" data-job="${job.id}" aria-label="Cancel ${name}">${svg('close')}</button></li>`;
   const symbol=job.state==='needs-folder'?`<span class="file-symbol muted">${svg('folder')}</span>`:job.state==='done'?`<span class="file-symbol ok">${svg('check')}</span>`:job.state==='failed'?`<span class="file-symbol failed">${svg('alert')}</span>`:job.state==='cancelled'?`<span class="file-symbol muted">${svg('close')}</span>`:`<span class="file-symbol">${svg('box')}</span>`;
   const detail=job.state==='queued'?this.meta(job):esc(job.saving||job.detail||'');
-  const action=job.state==='needs-folder'?`<button class="secondary" data-queue="folder" data-job="${job.id}">${svg('folder')} Choose folder &amp; retry</button>`:job.state==='queued'?`<button class="queue-x" data-queue="remove" data-job="${job.id}" aria-label="Remove ${name} from queue">${svg('close')}</button>`:job.outputs?.length?`${job.outputs.length>1?`<button class="secondary" data-queue="save-all" data-job="${job.id}"${job.saving?' disabled':''} aria-label="${folderAccess()?'Save all files to a folder':'Download all files'}">${svg(folderAccess()?'folder':'arrow')} ${folderAccess()?'Save all<span class="queue-wide"> to folder</span>':'Download all'}</button>`:''}<button class="quiet" data-queue="save" data-job="${job.id}" aria-expanded="${job.outputs.length>1?String(!!job.open):'false'}">${job.outputs.length===1?`Save ${svg('arrow')}`:job.open?'Hide files':'Show files'}</button>`:'';
+  const action=job.state==='needs-folder'?`<button class="secondary" data-queue="folder" data-job="${job.id}">${svg('folder')} Choose folder &amp; retry</button>`:job.state==='queued'?`<button class="queue-x" data-queue="remove" data-job="${job.id}" aria-label="Remove ${name} from queue">${svg('close')}</button>`:job.outputs?.length?`${job.outputs.length>1?`<button class="secondary" data-queue="save-all" data-job="${job.id}"${job.saving?' disabled':''} aria-label="${folderAccess()?'Save all files to a folder':'Download all files as one ZIP'}">${svg(folderAccess()?'folder':'arrow')} ${folderAccess()?'Save all<span class="queue-wide"> to folder</span>':'Download<span class="queue-wide"> all as</span> .zip'}</button>`:''}<button class="quiet" data-queue="save" data-job="${job.id}" aria-expanded="${job.outputs.length>1?String(!!job.open):'false'}">${job.outputs.length===1?`Save ${svg('arrow')}`:job.open?'Hide files':'Show files'}</button>`:'';
   return `<li class="queue-row ${job.state}">${symbol}<div class="queue-main"><span class="file-name">${name}</span><span class="queue-detail">${detail}</span></div>${action}</li>${job.open&&job.outputs&&job.outputs.length>1?`<li class="queue-row-files">${this.files(job)}</li>`:''}`;
  }
  private render(){
@@ -157,7 +165,7 @@ export class ExtractionQueue {
   const done=this.jobs.filter(job=>job.state==='done').length,counted=this.jobs.filter(job=>job.state!=='cancelled').length,queued=this.jobs.some(job=>job.state==='queued'),finished=this.jobs.some(job=>job.state==='done'||job.state==='failed'||job.state==='cancelled');
   const remaining=this.jobs.filter(job=>job.state==='queued'||job.state==='active'||job.state==='needs-folder').reduce((sum,job)=>sum+job.size,0);
   const start=!this.running&&queued?`<button class="primary" data-queue="start">${svg('arrow')} Start queue</button>`:'';
-  const place=this.destination?`${svg('folder')} ${esc(this.destination.name)}${!this.running?' <button class="quiet" data-queue="folder">Change</button>':''}`:folderAccess()?`${svg('folder')} No folder chosen · single files go to Downloads, others wait here to be saved <button class="quiet" data-queue="folder">Choose folder</button>`:`${svg('arrow')} Single files go to Downloads; others wait here to be saved`;
+  const place=this.destination?`${svg('folder')} ${esc(this.destination.name)}${!this.running?' <button class="quiet" data-queue="folder">Change</button>':''}`:folderAccess()?`${svg('folder')} No folder chosen · single files go to Downloads, others wait here to be saved <button class="quiet" data-queue="folder">Choose folder</button>`:this.helpers.streaming()?`${svg('arrow')} Everything goes to Downloads; archives with several files arrive as one .zip`:`${svg('arrow')} Finished archives wait here; save each as one .zip`;
   this.host.innerHTML=`<div class="queue-head"><div><h2>Queue</h2><span class="queue-count">${done} of ${counted} done</span></div><div class="queue-actions">${this.running?'<button class="quiet" data-queue="cancel-all">Cancel all</button>':finished?'<button class="quiet" data-queue="clear">Clear finished</button>':''}<button class="quiet" data-queue="add">${svg('plus')} Add archives</button>${start}</div></div><ol class="queue-list">${this.jobs.map(job=>this.row(job)).join('')}</ol><div class="queue-foot"><span class="queue-folder">${place}</span><dl><div><dt>Remaining</dt><dd>${size(remaining)}</dd></div><div><dt>Elapsed</dt><dd data-field="elapsed">${this.started?duration(((this.finishedAt||performance.now())-this.started)/1000):'—'}</dd></div></dl></div>`;
   this.renderActive();
  }

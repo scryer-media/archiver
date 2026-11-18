@@ -38,7 +38,7 @@ async function fetchJob(token){let response;handlers.fetch({waitUntil:()=>assert
  let reply;handlers.message({source:{id:'remote',url:'https://remote.test/'},data:{token:'bad'},ports:[{postMessage:value=>reply=value,close(){}}]});assert.equal(reply,undefined,'cross-origin registration ignored');
 }
 const helper={self:{postMessage(){}},performance,Int32Array,Uint8Array,Atomics,TextEncoder,TextDecoder,Map,Set,Error,Number,setInterval:()=>1,clearInterval(){},setTimeout:()=>1,clearTimeout(){},destinationPathRegistry:()=>()=>{},destinationParent:()=>{throw Error('disk path used by download');}};
-const code=ts.transpileModule((await readFile(new URL('../engine/direct-output.worker.ts',import.meta.url),'utf8')).replace(/^import .*;\n/,''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
+const code=ts.transpileModule((await readFile(new URL('../engine/direct-output.worker.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,''),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 vm.runInNewContext(code,helper);
 const shared=new SharedArrayBuffer(16+1024*1024),state=new Int32Array(shared,0,4),payload=new Uint8Array(shared,16);let closed=false,received=0;
 await helper.self.onmessage({data:{init:true,shared,download:new WritableStream({write(chunk){received+=chunk.length;},close(){closed=true;}})}});

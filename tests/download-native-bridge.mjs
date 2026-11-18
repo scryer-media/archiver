@@ -5,7 +5,7 @@ import vm from 'node:vm';
 import {Worker as Thread,MessageChannel} from 'node:worker_threads';
 import ts from 'typescript';
 const compile=source=>ts.transpileModule(source.replaceAll('import.meta.url',JSON.stringify('file:///workspace/engine/client.ts')),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
-const helperCode=compile((await readFile(new URL('../engine/direct-output.worker.ts',import.meta.url),'utf8')).replace(/^import .*;\n/,''));
+const helperCode=compile((await readFile(new URL('../engine/direct-output.worker.ts',import.meta.url),'utf8')).replace(/^import .*;\n/gm,''));
 const directCode=compile(await readFile(new URL('../engine/direct-output.ts',import.meta.url),'utf8'));
 const threadCode=`const {parentPort,workerData}=require('node:worker_threads');
  global.self={postMessage:data=>parentPort.postMessage(data),crossOriginIsolated:true};

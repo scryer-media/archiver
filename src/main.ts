@@ -6,7 +6,8 @@ import '@fontsource-variable/fira-code';
 import './style.css';
 import './dark.css';
 import './workflows.css';
-import { ArchiveEngine } from './tool-engine';
+import { ArchiveEngine, zipDownloadName } from './tool-engine';
+import {downloadZip} from './zip-download';
 import { ProgressTracker, duration, type ProgressSample } from './progress';
 import { chooseDelivery, intrinsicRawStream, type DeliveryChoice, type DeliveryEntry } from './delivery';
 import { streamDownloadCapability } from '../engine/download';
@@ -76,7 +77,7 @@ function updateFormat(){
  const parity=mode==='create'&&(format==='par2'||format==='par3'||(native&&!!protection)), par3=parity&&(format==='par3'||protection==='par3');
  $('#extract-folder').hidden=mode!=='extract'||!('showDirectoryPicker' in window);
  const groups=selectedGroups();$('#add-queue').hidden=!groups.length;if(groups.length>1)$('#extract-folder').hidden=true;$('#add-queue span').textContent=groups.length>1?`Add ${groups.length} to queue`:'Add to queue';
- $('#folder-hint').hidden=mode!=='extract'||!files.length||'showDirectoryPicker' in window;$('#folder-hint').textContent='showDirectoryPicker' in window?'Extract to folder preserves all files and empty folders in a new destination subfolder.':'Folder saving is unavailable in this browser. Single-file streamed downloads may still be available; prepared files can be downloaded individually.';
+ $('#folder-hint').hidden=mode!=='extract'||!files.length||'showDirectoryPicker' in window;$('#folder-hint').textContent='showDirectoryPicker' in window?'Extract to folder preserves all files and empty folders in a new destination subfolder.':'This browser can’t save into a folder, so an archive with several files downloads as one .zip.';
  updateDelivery();
  $('#solid-option').hidden=!native||!creationSettings.advanced;$('#seven-options').hidden=!native;$('#parity-options').hidden=!parity;
  $('#par3-codec-label').hidden=!par3;$('#advanced-recovery').hidden=!parity;
@@ -93,8 +94,8 @@ function updateFormat(){
 }
 ['format','protection','filter','volume-scheme','input-format','delivery'].forEach(id=>$('#'+id).addEventListener('change',updateFormat));
 function selectedGroups(){return mode==='extract'&&files.length&&!selectedArchive?groupArchives(repairedInputs.length?repairedInputs:files,archiveName):[];}
-function deliveryDecision(){return chooseDelivery({mode,choice:($('#delivery') as HTMLSelectElement).value as DeliveryChoice,format:($('#format') as HTMLSelectElement).value,inputNames:mode==='create'?files.map(file=>file.webkitRelativePath||file.name):archiveInputs().map(file=>file.name),inputFormatHint:($('#input-format') as HTMLSelectElement).value||undefined,inputBytes:files.reduce((sum,file)=>sum+file.size,0),maxInputFileBytes:files.reduce((max,file)=>Math.max(max,file.size),0),inputCount:files.length,directoryCount:directories.length,entries:listedEntries,available:streamCapability.available,unavailableReason:streamCapability.reason});}
-function updateDelivery(updateAction=true){const decision=deliveryDecision();$('#delivery-hint').textContent=decision.reason;$('#delivery-hint').hidden=!files.length||!decision.blocked&&!decision.stream&&($('#delivery') as HTMLSelectElement).value!=='download';$('#delivery-hint').classList.toggle('delivery-warning',decision.blocked);if(!busy)($('#run') as HTMLButtonElement).disabled=(mode==='create'||selectedArchive||!decision.requiresInspection)&&decision.blocked;if(!updateAction)return;if(mode==='extract'&&selectedArchive)$('#run').innerHTML=(decision.blocked?'Choose another output':decision.stream?'Download file':'Extract all files')+svg('arrow');else if(mode==='extract'&&files.length){const hint=($('#input-format') as HTMLSelectElement).value,canOpen=!!hint||archiveInputs().some(file=>archiveName(file.name))||!files.some(file=>/\.(par2|par3|rev)$/i.test(file.name));$('#run').innerHTML=(decision.blocked&&!decision.requiresInspection?'Choose another output':decision.stream&&intrinsicRawStream(archiveInputs().map(file=>file.name),hint)?'Download stream':canOpen?'Open archive':'Verify files')+svg('arrow');}const count=selectedGroups().length;if(count>1){$('#run').innerHTML=`Extract ${count} archives`+svg('arrow');if(!busy)($('#run') as HTMLButtonElement).disabled=false;}}
+function deliveryDecision(){return chooseDelivery({mode,choice:($('#delivery') as HTMLSelectElement).value as DeliveryChoice,format:($('#format') as HTMLSelectElement).value,inputNames:mode==='create'?files.map(file=>file.webkitRelativePath||file.name):archiveInputs().map(file=>file.name),inputFormatHint:($('#input-format') as HTMLSelectElement).value||undefined,inputBytes:files.reduce((sum,file)=>sum+file.size,0),maxInputFileBytes:files.reduce((max,file)=>Math.max(max,file.size),0),inputCount:files.length,directoryCount:directories.length,entries:listedEntries,available:streamCapability.available,unavailableReason:streamCapability.reason,folderAccess:'showDirectoryPicker' in window});}
+function updateDelivery(updateAction=true){const decision=deliveryDecision();$('#delivery-hint').textContent=decision.reason;$('#delivery-hint').hidden=!files.length||!decision.blocked&&!decision.stream&&($('#delivery') as HTMLSelectElement).value!=='download';$('#delivery-hint').classList.toggle('delivery-warning',decision.blocked);if(!busy)($('#run') as HTMLButtonElement).disabled=(mode==='create'||selectedArchive||!decision.requiresInspection)&&decision.blocked;if(!updateAction)return;if(mode==='extract'&&selectedArchive)$('#run').innerHTML=(decision.blocked?'Choose another output':decision.zip?'Download as .zip':decision.stream?'Download file':'Extract all files')+svg('arrow');else if(mode==='extract'&&files.length){const hint=($('#input-format') as HTMLSelectElement).value,canOpen=!!hint||archiveInputs().some(file=>archiveName(file.name))||!files.some(file=>/\.(par2|par3|rev)$/i.test(file.name));$('#run').innerHTML=(decision.blocked&&!decision.requiresInspection?'Choose another output':decision.stream&&intrinsicRawStream(archiveInputs().map(file=>file.name),hint)?'Download stream':canOpen?'Open archive':'Verify files')+svg('arrow');}const count=selectedGroups().length;if(count>1){$('#run').innerHTML=`Extract ${count} archives`+svg('arrow');if(!busy)($('#run') as HTMLButtonElement).disabled=false;}}
 function createOptions(){
  const format=($('#format') as HTMLSelectElement).value, protection=($('#protection') as HTMLSelectElement).value as 'par2'|'par3'|'';
  const number=(id:string)=>Number(($('#'+id) as HTMLInputElement).value)||undefined;
@@ -113,7 +114,13 @@ async function saveAll(){
   if(busy||saving||(!outputs.length&&!outputDirectories.length))return;
   const filesToSave=[...outputs], foldersToSave=[...outputDirectories];
   if(filesToSave.length===1&&!foldersToSave.length&&!/[\/]/.test(filesToSave[0].name)){save(filesToSave[0]);return;}
-  if(!('showDirectoryPicker' in window)){notice('This browser cannot save folders. Download files individually using the arrows beside each file.');return;}
+  if(!('showDirectoryPicker' in window)){
+   // No folder access: everything goes out as one ZIP download.
+   saving=true;lockControls(true);const name=zipDownloadName(archiveInputs());
+   try{await downloadZip(name,filesToSave,foldersToSave,{streaming:streamCapability.available,save,progress:(done,total)=>notice(`Packing ${name}: ${done} of ${total} files…`)});notice(`${name} sent to your browser’s downloads.`);}
+   catch(error){notice((error as Error).message,true);}finally{saving=false;lockControls(false);}
+   return;
+  }
   saving=true;lockControls(true);
   try{
    const directory=await (window as any).showDirectoryPicker({mode:'readwrite'});
@@ -165,7 +172,7 @@ async function run(action?:'verify'|'repair'|'rebuild'|'direct'){
   let operation=mode==='create'?'create':(action==='direct'?'extract':action)||(!canOpen?'verify':'extract');
   const delivery=deliveryDecision();if(!action&&(operation==='create'||operation==='extract')&&delivery.blocked)throw Error(delivery.reason);activeStreamOutput=!action&&(operation==='create'||operation==='extract')&&delivery.stream;
   $('#operation .progress-note').textContent=activeStreamOutput?'Check Downloads for final completion.':'';
-  let result=operation==='create'?await engine.create(files,{...createOptions(),delivery:activeStreamOutput?'download':undefined}):operation==='verify'?await engine.verify(files,createOptions()):operation==='rebuild'?await engine.rebuildParity(files,createOptions()):operation==='repair'?await engine.repair(files,password,createOptions()):await engine.extract(archiveInputs(),password,formatHint,destination,activeStreamOutput?'download':undefined,extractionOptions());
+  let result=operation==='create'?await engine.create(files,{...createOptions(),delivery:activeStreamOutput?'download':undefined}):operation==='verify'?await engine.verify(files,createOptions()):operation==='rebuild'?await engine.rebuildParity(files,createOptions()):operation==='repair'?await engine.repair(files,password,createOptions()):await engine.extract(archiveInputs(),password,formatHint,destination,activeStreamOutput?(delivery.zip?'zip':'download'):undefined,extractionOptions());
   if(current!==operationId)return;
   // Files with recovery data but no archive: repair them right away when the check finds damage.
   if(operation==='verify'&&!action&&result.complete===false&&hasParity(files)){$('#phase').textContent='Repairing your files…';result=await engine.repair(files,password,createOptions());operation='repair';if(current!==operationId)return;}
