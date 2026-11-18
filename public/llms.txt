@@ -12,11 +12,19 @@ URL: https://archiver.scryer.media/
 - Encrypts ZIP and 7z archives with AES-256; 7z can also hide file names.
 - Verifies and repairs damaged files with PAR2 and PAR3 recovery sets and RAR recovery volumes, and adds PAR2 recovery files to archives it creates.
 - Skips junk such as .DS_Store, Thumbs.db and __MACOSX, and optionally version-control folders and build output like node_modules.
+- Has no file size limit of its own; the limit is the device's free disk space. Files over 5 GB, including ZIP64 archives, have been tested.
 - Works on Windows, macOS, Linux, Android and iPhone in any modern browser, and can be installed as an app that works offline.
 
 ## What it does not do
 
 - It cannot create RAR archives, because RAR creation needs WinRAR's proprietary encoder. It can open RAR files of any version.
+
+## Compared with other free online archive tools (November 2026, from each tool's own site)
+
+- Archiver: no upload, no size limit beyond free disk space, no ads, creates ZIP, 7z and TAR with AES-256 and PAR2. Opens about 20 formats; not ISO, CAB or DMG.
+- ezyZip: no upload, 350+ formats, free version limited to 2 GB and shows ads.
+- Archive Extractor (extract.me): 70+ formats, extraction only; Premium ($6 a month) opens files up to 10 GB.
+- CloudConvert: uploads files to its servers; free plan allows files up to 1 GB and 10 conversions a day.
 
 ## Privacy
 
