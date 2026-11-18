@@ -172,6 +172,8 @@ export class ArchiveEngine {
     if (header[0] === 0x50 && header[1] === 0x4b) return files;
     if (new TextDecoder().decode(header.slice(257, 262)) === 'ustar') return [new File([file], file.name + '.tar')];
   }
+  /** ISO 9660 and UDF disc images, read by the engine's lamfold reader. */
+  private isDiscImage(files: File[], format?: string) { return format==='iso'||!format&&files.length===1&&/\.iso$/i.test(files[0].name); }
   private isTarStream(files: File[]) { return files.length === 1 && /(?:\.tar\.(gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib)|\.tgz)$/i.test(files[0].name); }
   private async decodeTar(file: File, password?: string, format?: string, epoch = this.cancellationEpoch): Promise<File> {
     this.checkEpoch(epoch);
@@ -187,6 +189,7 @@ export class ArchiveEngine {
   private async listInternal(files: File[], password?: string, format?: string,options:ExtractionOptions={}): Promise<EngineResult> {
     const epoch = this.cancellationEpoch;
     if (this.isTarStream(files)) { const decoded = await this.decodeTar(files[0], password, format, epoch); this.checkEpoch(epoch); this.stage='list-tar';return this.native.list([decoded],undefined,'tar',options); }
+    if(this.isDiscImage(files,format)){this.stage='list-iso';return this.native.list(files,undefined,'iso',options);}
     const fallback = !format ? await this.fallbackFiles(files) : ['zip','tar'].includes(format) ? files.map(file => new File([file], 'archive.' + format)) : undefined;
     this.checkEpoch(epoch);
     if(format==='tar'||fallback?.[0]?.name.toLowerCase().endsWith('.tar'))return this.native.list(fallback||files,password,'tar',options);
@@ -217,6 +220,7 @@ export class ArchiveEngine {
       }
       return this.native.extract(files,password,format,outputDirectory,downloadStream,options);
     }
+    if(this.isDiscImage(files,format)){this.stage='extract-iso';return this.native.extract(files,undefined,'iso',outputDirectory,downloadStream,options);}
     const fallback = !format ? await this.fallbackFiles(files) : ['zip','tar'].includes(format) ? files.map(file => new File([file], 'archive.' + format)) : undefined;
     this.checkEpoch(epoch);
     if(format==='tar'||fallback?.[0]?.name.toLowerCase().endsWith('.tar'))return this.native.extract(fallback||files,password,'tar',outputDirectory,downloadStream,options);

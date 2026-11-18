@@ -16,6 +16,9 @@ zstd = "0.14"
 brotli = { version = ">=7, <10", default-features = false, features = ["std"] }
 lz4_flex = "0.14"
 flate2 = { version = "1", features = ["zlib-rs"] }
+lamfold = { version = "=0.1.5", default-features = false, features = ["std"] }
+lamfold-iso = { version = "=0.1.2", default-features = false, features = ["std", "zisofs"] }
+lamfold-udf = { version = "=0.1.1", default-features = false, features = ["std"] }
 [profile.release]
 opt-level = 3
 lto = true

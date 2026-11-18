@@ -1,6 +1,7 @@
 mod codecs;
 mod create;
 mod embedded;
+mod iso;
 mod links;
 mod metadata;
 mod parity;
@@ -281,6 +282,9 @@ fn validate_request(r: &Request) -> Result<(), String> {
     {
         return Err("PAR3 creation is not available; existing PAR3 sets can still be opened, verified and repaired".into());
     }
+    if r.op == "create" && r.format == "iso" {
+        return Err("ISO images can be opened but not created".into());
+    }
     if r.op == "create"
         && !matches!(r.format.as_str(), "" | "7z" | "tar" | "par2")
         && streams::canonical(&r.format).is_none()
@@ -338,6 +342,9 @@ fn run(r: Request) -> Result<Value, String> {
     fs::create_dir_all("/out").map_err(err)?;
     if r.format == "tar" {
         return tar::run(&r);
+    }
+    if r.format == "iso" {
+        return iso::run(&r);
     }
     let first = r
         .paths

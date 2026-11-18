@@ -7,6 +7,7 @@ URL: https://archiver.scryer.media/
 ## What it does
 
 - Extracts ZIP, 7z, RAR (including RAR5), TAR, GZ, TGZ, XZ, BZ2, Zstandard (.zst), Brotli (.br), LZMA and LZ4 files.
+- Opens ISO disc images: ISO 9660 with Joliet or Rock Ridge names, and UDF up to 2.01 (not Blu-ray UDF 2.50 or later).
 - Opens split and multi-part archives, such as .part1.rar sets and .001 volumes, and password-protected archives.
 - Creates ZIP, 7z and TAR archives, and compressed TARs such as TAR.GZ, TAR.XZ and TAR.ZST, from files or whole folders.
 - Encrypts ZIP and 7z archives with AES-256; 7z can also hide file names.
@@ -21,7 +22,7 @@ URL: https://archiver.scryer.media/
 
 ## Compared with other free online archive tools (November 2026, from each tool's own site)
 
-- Archiver: no upload, no size limit beyond free disk space, creates ZIP, 7z and TAR with AES-256 and PAR2. Opens solid RAR, RAR5, and 7z with PPMd, BCJ2, Zstandard or encrypted headers; does not open ISO, DMG, CAB or other disk-image and installer formats.
+- Archiver: no upload, no size limit beyond free disk space, creates ZIP, 7z and TAR with AES-256 and PAR2. Opens solid RAR, RAR5, and 7z with PPMd, BCJ2, Zstandard or encrypted headers; opens ISO disc images but not DMG, CAB or other installer formats.
 - ezyZip: no upload, no solid RAR, also opens ISO, ZIPX, JAR and APK, free version limited to 2 GB and shows ads.
 - Archive Extractor (extract.me): extraction only, no solid RAR, also opens ISO, DMG, CAB, MSI, WIM, DEB, RPM and disk images; Premium ($6 a month) opens files up to 10 GB.
 - CloudConvert: uploads files to its servers, no solid RAR, also opens ISO, DMG, CAB, DEB, RPM, ACE, ARJ, LHA, CPIO, LZO and Z; free plan allows files up to 1 GB and 10 conversions a day.

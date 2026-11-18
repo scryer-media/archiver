@@ -37,11 +37,11 @@ let saving=false;
 function lockControls(locked:boolean){document.querySelectorAll<HTMLButtonElement|HTMLInputElement|HTMLSelectElement>('#selection button, #selection input, #selection select, [data-mode], #browse, #browse-folder, #queue-create, #save-all, #update-app, [data-download]').forEach(control=>control.disabled=locked);}
 let repairedInputs:File[]=[];let recoveryChecked=false;
 let directories:string[]=[], outputDirectories:string[]=[];
-const archiveName=(name:string)=>/\.(7z(?:\.\d{3})?|zip|rar|r\d\d|exe|tar|gz|tgz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib|zz)$/i.test(name);
+const archiveName=(name:string)=>/\.(7z(?:\.\d{3})?|zip|rar|r\d\d|exe|iso|tar|gz|tgz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib|zz)$/i.test(name);
 const extractable=(name:string)=>archiveName(name)||/\.(par2|par3|rev|\d{3})$/i.test(name);
 const numbered=(prefix:string,from:number,to:number,width:number)=>Array.from({length:to-from+1},(_,i)=>`.${prefix}${String(from+i).padStart(width,'0')}`);
 // Touch-only browsers (iOS Files) grey out extensions they have no type for, which would hide split parts and recovery files.
-const archiveAccept=()=>canDrop()?['.7z','.zip','.rar','.exe','.tar','.gz','.tgz','.zst','.zstd','.br','.xz','.bz2','.bzip2','.lzma','.lz4','.deflate','.zlib','.zz','.par2','.par3','.rev',...numbered('r',0,99,2),...numbered('',1,999,3)].join(','):'';
+const archiveAccept=()=>canDrop()?['.7z','.zip','.rar','.exe','.iso','.tar','.gz','.tgz','.zst','.zstd','.br','.xz','.bz2','.bzip2','.lzma','.lz4','.deflate','.zlib','.zz','.par2','.par3','.rev',...numbered('r',0,99,2),...numbered('',1,999,3)].join(','):'';
 const archiveInputs=()=>{const selected=repairedInputs.length?repairedInputs:files;const archives=selected.filter(file=>!/\.(par2|par3|rev)$/i.test(file.name));return repairedInputs.length?archives:archives.sort((a,b)=>Number(archiveName(b.name))-Number(archiveName(a.name))||a.name.localeCompare(b.name,undefined,{numeric:true}));};
 let mode:Mode='extract', files:File[]=[],busy=false,selectedArchive=false, outputs:{name:string;blob:Blob}[]=[];
 const tracker=new ProgressTracker();let progressTimer:ReturnType<typeof setInterval>|undefined;let lastAnnouncement=0,lastPhase='';

@@ -48,6 +48,9 @@ dependencies = [
  "brotli",
  "bzip2-turbo 0.2.1",
  "flate2",
+ "lamfold",
+ "lamfold-iso",
+ "lamfold-udf",
  "lz4_flex",
  "lzma-turbo 0.12.0",
  "par2-rs",
@@ -545,6 +548,34 @@ dependencies = [
  "cfg-if",
  "futures-util",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "lamfold"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4493321e1d73352fa58b08226a791eaa10f3aa95252c5c97f17f6bd1229ac99e"
+dependencies = [
+ "miniz_oxide",
+ "zerocopy",
+]
+
+[[package]]
+name = "lamfold-iso"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20ebbc18d155493063f129e55aefdf20cd8d49097bbc417579ac229a793c4438"
+dependencies = [
+ "lamfold",
+]
+
+[[package]]
+name = "lamfold-udf"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "503dfa32ad58d6a22fcb1d7ab0e87c2331321270a84b3bb5b3f4e32b8c16d846"
+dependencies = [
+ "lamfold",
 ]
 
 [[package]]
@@ -1250,6 +1281,26 @@ checksum = "3f3fd376f71958b862e7afb20cfe5a22830e1963462f3a17f49d82a6c1d1f42d"
 dependencies = [
  "bitflags",
  "windows-sys 0.59.0",
+]
+
+[[package]]
+name = "zerocopy"
+version = "0.8.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5fe1f8f1b06191a00962174c61aa5005e0bb391a6d80d07e24d115c01a92ed8"
+dependencies = [
+ "zerocopy-derive",
+]
+
+[[package]]
+name = "zerocopy-derive"
+version = "0.8.63"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "863ad3ac83293fb4d740aedbfdc9240dd8d1a50c1099acd76ce80ce7c7230c7f"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]
