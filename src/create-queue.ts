@@ -23,10 +23,9 @@ const renamed=(file:Output,stem:string)=>file.name.startsWith('archive.')?{...fi
 
 /** Creates archives one after another, so the Create screen is free for the next one. An archive to download now runs next; a queued one waits its turn and is kept until downloaded. */
 export class CreateQueue {
- private jobs:Job[]=[];private next=1;private active?:Job;private engine?:ArchiveEngine;private tracker=new ProgressTracker();private timer?:ReturnType<typeof setInterval>;private abortActive?:()=>void;private shown=false;
+ private jobs:Job[]=[];private next=1;private active?:Job;private engine?:ArchiveEngine;private tracker=new ProgressTracker();private timer?:ReturnType<typeof setInterval>;private abortActive?:()=>void;
  constructor(private host:HTMLElement,private helpers:Helpers){host.addEventListener('click',event=>this.click(event));}
  get running(){return !!this.active;}
- setVisible(shown:boolean){this.shown=shown;this.render();}
  add(input:CreateJobInput){
   const name=['zip','7z','tar'].includes(input.format)||input.format.startsWith('tar.')?`${input.stem}.${input.format}`:input.format==='par2'?`${input.stem} recovery files`:`${input.files[0]?.name}.${input.format}`;
   const job:Job={...input,id:this.next++,name,size:input.files.reduce((sum,file)=>sum+file.size,0),state:'queued'};
@@ -97,7 +96,7 @@ export class CreateQueue {
   return `<li class="queue-row ${job.state}">${symbol}<div class="queue-main"><span class="file-name">${name}</span><span class="queue-detail">${detail}</span></div>${action}</li>`;
  }
  private render(){
-  this.host.hidden=!this.shown||!this.jobs.length;if(this.host.hidden)return;
+  this.host.hidden=!this.jobs.length;if(this.host.hidden)return;
   const done=this.jobs.filter(job=>job.state==='done').length,counted=this.jobs.filter(job=>job.state!=='cancelled').length,finished=this.jobs.some(job=>!['queued','active'].includes(job.state));
   this.host.innerHTML=`<div class="queue-head"><div><h2>Creating</h2><span class="queue-count">${done} of ${counted} done</span></div><div class="queue-actions">${finished?'<button class="quiet" data-create="clear">Clear finished</button>':''}${this.active?'<button class="quiet" data-create="cancel-all">Cancel all</button>':''}</div></div><ol class="queue-list">${this.jobs.map(job=>this.row(job)).join('')}</ol>`;
   this.renderActive();

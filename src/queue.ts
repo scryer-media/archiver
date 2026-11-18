@@ -8,7 +8,9 @@ import {checkRecovery} from './recovery';
 
 type JobState='queued'|'active'|'needs-folder'|'done'|'failed'|'cancelled';
 type Output={name:string;blob:Blob};
-interface Job extends ArchiveGroup {id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];directories?:string[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string}
+/** How an archive opened on screen goes out, as its Extract screen decided: streamed to Downloads, as one ZIP download, or kept in this tab. */
+export interface JobDelivery {stream:boolean;zip:boolean;totalBytes?:number}
+interface Job extends ArchiveGroup {destination?:FileSystemDirectoryHandle;delivery?:JobDelivery;id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];directories?:string[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string}
 interface Helpers {isArchive:(name:string)=>boolean;svg:(name:string)=>string;esc:(text:string)=>string;size:(bytes:number)=>string;canStart:()=>boolean;notice:(message:string,error?:boolean)=>void;addArchives:()=>void;save:(file:Output)=>void;streaming:()=>boolean}
 const folderAccess=()=>'showDirectoryPicker' in window;
 const PAGE=200;
@@ -29,8 +31,8 @@ export class ExtractionQueue {
  private tracker=new ProgressTracker();private timer?:ReturnType<typeof setInterval>;private started=0;private finishedAt=0;private stopping=false;private abortActive?:()=>void;
  constructor(private host:HTMLElement,private helpers:Helpers){host.addEventListener('click',event=>this.click(event));}
  get running(){return !!this.active||this.stopping;}
- add(groups:ArchiveGroup[],password:string|undefined,format:string|undefined,options:ExtractionOptions){
-  for(const group of groups)this.jobs.push({...group,id:this.next++,password,format,options:{...options},state:'queued'});
+ add(groups:ArchiveGroup[],password:string|undefined,format:string|undefined,options:ExtractionOptions,place:{destination?:FileSystemDirectoryHandle;delivery?:JobDelivery}={}){
+  for(const group of groups)this.jobs.push({...group,...place,id:this.next++,password,format,options:{...options},state:'queued'});
   this.render();
  }
  private find(id:number){return this.jobs.find(job=>job.id===id);}
@@ -50,7 +52,7 @@ export class ExtractionQueue {
   else if(action==='file'&&job?.outputs){const file=job.outputs[Number(button.dataset.index)];if(file)this.helpers.save(file);}
  }
  private async chooseFolder(){
-  try{this.destination=await (window as any).showDirectoryPicker({mode:'readwrite'});for(const job of this.jobs)if(job.state==='needs-folder'){job.state='queued';job.detail=undefined;}this.render();return true;}
+  try{this.destination=await (window as any).showDirectoryPicker({mode:'readwrite'});for(const job of this.jobs)if(job.state==='needs-folder'){job.state='queued';job.detail=undefined;job.destination=undefined;job.delivery=undefined;}this.render();return true;}
   catch(error){if((error as Error).name!=='AbortError')this.helpers.notice((error as Error).message,true);return false;}
  }
  private resume(){if(!this.running&&this.started&&this.jobs.some(job=>job.state==='queued'))void this.start();}
@@ -73,23 +75,24 @@ export class ExtractionQueue {
     const inputs=recovery?.files??job.files.filter(file=>!recoveryName(file.name));
     const note=recovery?.repaired?' · repaired':recovery?.checkFailed?` · recovery check could not run (${recovery.checkFailed})`:recovery?' · checked':'';
     // Without a folder, an archive holding one file goes to Downloads. Anything else is kept in this tab, but only up to what the tab can hold.
-    const inspected=this.destination?undefined:await Promise.race([engine.inspect(inputs,job.password,job.format,job.options),cancelled]);
-    const stream=!!inspected?.streamable&&this.helpers.streaming();
+    const destination=job.destination??this.destination,planned=destination?undefined:job.delivery;
+    const inspected=destination||planned?undefined:await Promise.race([engine.inspect(inputs,job.password,job.format,job.options),cancelled]);
+    const stream=planned?planned.stream&&!planned.zip:!!inspected?.streamable&&this.helpers.streaming();
     // A browser that cannot write to a folder takes several files as one ZIP download, at any size.
-    const zip=!this.destination&&!stream&&!folderAccess()&&this.helpers.streaming()?zipDownloadName(inputs):undefined;
-    const budget=job.options.outputLimitBytes!,capacity=this.destination||stream||zip?budget:await tabCapacity(budget),tabLimited=capacity<budget;
-    if(job.state==='active'&&tabLimited&&(capacity<=0||inspected?.totalBytes!==undefined&&inspected.totalBytes>capacity))this.needsFolder(job,`Expands to ${this.helpers.size(inspected?.totalBytes??0)}, more than this tab can hold (${this.helpers.size(capacity)}).`);
+    const zip=planned?planned.zip?zipDownloadName(inputs):undefined:!destination&&!stream&&!folderAccess()&&this.helpers.streaming()?zipDownloadName(inputs):undefined;
+    const budget=job.options.outputLimitBytes!,capacity=destination||stream||zip?budget:await tabCapacity(budget),tabLimited=capacity<budget;
+    if(job.state==='active'&&tabLimited&&(capacity<=0||(inspected?.totalBytes??planned?.totalBytes)!==undefined&&(inspected?.totalBytes??planned!.totalBytes!)>capacity))this.needsFolder(job,`Expands to ${this.helpers.size(inspected?.totalBytes??planned?.totalBytes??0)}, more than this tab can hold (${this.helpers.size(capacity)}).`);
     else{
      job.streamed=stream;
      let result;
-     try{result=await Promise.race([engine.extract(inputs,job.password,job.format,this.destination,stream?'download':zip?'zip':undefined,{...job.options,outputLimitBytes:capacity}),cancelled]);}
+     try{result=await Promise.race([engine.extract(inputs,job.password,job.format,destination,stream?'download':zip?'zip':undefined,{...job.options,outputLimitBytes:capacity}),cancelled]);}
      catch(error){if(job.state==='active'&&tabLimited&&isOutputLimited(error)){this.needsFolder(job,`Ran past what this tab can hold (${this.helpers.size(capacity)}).`);result=undefined;}else throw error;}
      if(result&&job.state==='active'){
       const count=result.savedFiles??result.files.length,elapsed=duration(this.tracker.view(performance.now()).elapsedSeconds);
       job.state=result.complete===false?'failed':'done';
       job.detail=result.complete===false?(result.message||'Incomplete'):`${stream?'Sent to Downloads':zip&&result.downloadSent?`Sent to Downloads as ${result.downloadName||zip}`:`${count} ${count===1?'file':'files'}`}${note} · ${elapsed}`;
       // In-tab results live in the engine's storage, so that engine stays alive until the job is cleared.
-      if(!this.destination&&!stream&&!result.downloadSent&&job.state==='done'){job.outputs=result.files;job.directories=result.directories;job.engine=engine;if(inspected?.streamable&&result.files.length===1){this.helpers.save(result.files[0]);job.detail=`Sent to Downloads${note} · ${elapsed}`;}}
+      if(!destination&&!stream&&!result.downloadSent&&job.state==='done'){job.outputs=result.files;job.directories=result.directories;job.engine=engine;if(inspected?.streamable&&result.files.length===1){this.helpers.save(result.files[0]);job.detail=`Sent to Downloads${note} · ${elapsed}`;}}
      }
     }
    }catch(error){if(job.state==='active'){job.state='failed';job.detail=error instanceof Error?error.message:String(error);}}
@@ -166,7 +169,7 @@ export class ExtractionQueue {
   const remaining=this.jobs.filter(job=>job.state==='queued'||job.state==='active'||job.state==='needs-folder').reduce((sum,job)=>sum+job.size,0);
   const start=!this.running&&queued?`<button class="primary" data-queue="start">${svg('arrow')} Start queue</button>`:'';
   const place=this.destination?`${svg('folder')} ${esc(this.destination.name)}${!this.running?' <button class="quiet" data-queue="folder">Change</button>':''}`:folderAccess()?`${svg('folder')} No folder chosen · single files go to Downloads, others wait here to be saved <button class="quiet" data-queue="folder">Choose folder</button>`:this.helpers.streaming()?`${svg('arrow')} Everything goes to Downloads; archives with several files arrive as one .zip`:`${svg('arrow')} Finished archives wait here; save each as one .zip`;
-  this.host.innerHTML=`<div class="queue-head"><div><h2>Queue</h2><span class="queue-count">${done} of ${counted} done</span></div><div class="queue-actions">${this.running?'<button class="quiet" data-queue="cancel-all">Cancel all</button>':finished?'<button class="quiet" data-queue="clear">Clear finished</button>':''}<button class="quiet" data-queue="add">${svg('plus')} Add archives</button>${start}</div></div><ol class="queue-list">${this.jobs.map(job=>this.row(job)).join('')}</ol><div class="queue-foot"><span class="queue-folder">${place}</span><dl><div><dt>Remaining</dt><dd>${size(remaining)}</dd></div><div><dt>Elapsed</dt><dd data-field="elapsed">${this.started?duration(((this.finishedAt||performance.now())-this.started)/1000):'—'}</dd></div></dl></div>`;
+  this.host.innerHTML=`<div class="queue-head"><div><h2>Extracting</h2><span class="queue-count">${done} of ${counted} done</span></div><div class="queue-actions">${this.running?'<button class="quiet" data-queue="cancel-all">Cancel all</button>':finished?'<button class="quiet" data-queue="clear">Clear finished</button>':''}<button class="quiet" data-queue="add">${svg('plus')} Add archives</button>${start}</div></div><ol class="queue-list">${this.jobs.map(job=>this.row(job)).join('')}</ol><div class="queue-foot"><span class="queue-folder">${place}</span><dl><div><dt>Remaining</dt><dd>${size(remaining)}</dd></div><div><dt>Elapsed</dt><dd data-field="elapsed">${this.started?duration(((this.finishedAt||performance.now())-this.started)/1000):'—'}</dd></div></dl></div>`;
   this.renderActive();
  }
  private renderActive(){
