@@ -11,6 +11,8 @@ const filterLabels:Record<string,string>={none:'None',delta:'Delta',x86:'x86',ar
 const levels:Record<string,[number,number,number]>={lzma2:[0,9,3],lzma:[0,9,3],ppmd:[0,9,6],bzip2:[1,9,5],zstd:[1,22,3],deflate:[0,9,6],brotli:[0,11,5]};
 export class CreationSettings {
  advanced=false;
+ /** Simple mode's compression choice: the inspected plan's own level, or the highest level each codec offers. */
+ effort:'standard'|'max'='standard';
  private files:File[]=[];
  private detections:Detection[]=[];
  private overrides=new Map<string,FileCreateOptions>();
@@ -28,6 +30,7 @@ export class CreationSettings {
  private dictionary=8*1024*1024;
  /** `dictionary` is the archive-wide LZMA dictionary ceiling; every LZMA and LZMA2 file uses it, so solid groups are not split by it. */
  setContext(format:string,memory:number,dictionary=8*1024*1024){this.format=format;this.memory=memory;this.dictionary=dictionary;this.render();}
+ setEffort(value:'standard'|'max'){this.effort=value;this.render();this.changed();}
  setAdvanced(value:boolean){this.advanced=value;this.render();this.changed();}
  setFiles(files:File[]){
   this.abort?.abort();this.abort=new AbortController();const generation=++this.generation;
@@ -41,12 +44,13 @@ export class CreationSettings {
  private status(){return this.inspecting?'Inspecting files · '+this.completed+' / '+this.files.length:this.skipped?'Inspection skipped · using general defaults':'File settings';}
  cancelInspection(){if(!this.inspecting)return;this.abort?.abort();this.detections=this.files.map(file=>unknownDetection(file.webkitRelativePath||file.name,'Inspection skipped; using general defaults.'));this.inspecting=false;this.skipped=true;this.pending=Promise.resolve();this.render();}
  ready(){return this.pending;}
- reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.advanced=false;this.pending=Promise.resolve();this.render();}
+ reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
  private recommendation(index:number):FileCreateOptions{
   const name=this.files[index].webkitRelativePath||this.files[index].name;
   const detection=this.detections[index];
   const base=detection?recommendForFormat(detection,this.format as Format):{name,codec:this.format==='zip'?'deflate':'lzma2',level:3};
-  return this.normalize({...base,name});
+  const top=this.effort==='max'?levels[base.codec||'']?.[1]:undefined;
+  return this.normalize({...base,name,...top===undefined?{}:{level:top}});
  }
  private normalize(plan:FileCreateOptions):FileCreateOptions{
   const result:FileCreateOptions={name:plan.name,codec:plan.codec};const bounds=levels[plan.codec||''];
