@@ -11,6 +11,7 @@ self.onmessage = async ({ data }) => {
   let budget:WriteBudget|undefined;
   let volume: DiskVolume | undefined;
   let direct: DirectOutput | undefined;
+  let inputFailure: string | undefined;
   const temporaryDirectory: string = data.temporaryDirectory;
   try {
     const { op, files, password, solid, options = {} } = data;
@@ -26,10 +27,10 @@ self.onmessage = async ({ data }) => {
     const runtimeName = import.meta.env.PROD ? `archive-engine-${version}.js` : 'archive-engine.js';
     const runtimeUrl = new URL('/engine/' + runtimeName, self.location.origin).href;
     const { default: createModule } = await import(/* @vite-ignore */ runtimeUrl);
-    const module = await createModule({ locateFile: (name: string) => '/engine/' + (import.meta.env.PROD && name.endsWith('.wasm') ? `archive_engine-${version}.wasm` : name), print: () => {}, printErr: () => {} });
+    const module = await createModule({ locateFile: (name: string) => '/engine/' + (import.meta.env.PROD && name.endsWith('.wasm') ? `archive_engine-${version}.wasm` : name), print: () => {}, printErr: (line:string) => { if (!import.meta.env.PROD) console.error('[engine]', line); } });
     // File-backed WORKERFS reads original input lazily. All mutations, copies,
     // dynamic output files and repair scratch data live under the private /out mount.
-    const inputReads=mountInputs(module,files,names);
+    const inputReads=mountInputs(module,files,names,message=>{inputFailure??=message;});
     module.FS.mkdir('/out');
     installWriteBudget(module,budget);
     const runEngine=(request:any)=>{
@@ -84,6 +85,8 @@ self.onmessage = async ({ data }) => {
     const request = { ...options, inputMetadata, op, paths: names.map(name => '/input/' + name), password: password ?? '', solid: solid ?? false, maxOutput: op==='list'?Number.MAX_SAFE_INTEGER:Math.min(budget.remaining,direct?budget.limit:volume?.quota??MEMORY_LIMIT) };
     const telemetry=installIoProgress(module,op,files,names,progress=>self.postMessage({progress:{...progress,inputReads:{...inputReads}}}),!!direct,totals);
     const result=runEngine(request);
+    // A result computed over an unreadable input would read it as missing or damaged data.
+    if(inputFailure)throw new Error(inputFailure);
     if(result.error){
       const budgetLimited=request.maxOutput===budget.remaining;
       if(budgetLimited&&/^(Archive (regular members|link copies) exceed output limit|[^\n]*output quota[^\n]*)$/i.test(result.error))throw budget.exceeded();
@@ -128,7 +131,7 @@ self.onmessage = async ({ data }) => {
   } catch (error) {
     try { direct?.close(); } catch {}
     try { volume?.close(); } catch {}
-    self.postMessage({ writeBudgetUsed:budget?.used??0, outputLimited:!!budget?.failure, error: budget?.failure?.message??(error instanceof Error ? error.message : String(error)) });
+    self.postMessage({ writeBudgetUsed:budget?.used??0, outputLimited:!!budget?.failure, error: budget?.failure?.message??inputFailure??(error instanceof Error ? error.message : String(error)) });
   }
 };
 export {};

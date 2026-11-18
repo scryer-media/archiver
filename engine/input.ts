@@ -32,11 +32,22 @@ export function cachedInputReads(workerfs:any):{read:(stream:any,buffer:Uint8Arr
   return count;
  }};
 }
+/** Why an input read failed, for people. A file removed after it was chosen reports NotFoundError. */
+export function inputReadFailure(name:string,error:unknown):string{
+  if(error instanceof Error&&error.name==='NotFoundError')return `Could not read ${name}: it was moved or deleted after it was chosen`;
+  return `Could not read ${name}: ${error instanceof Error?error.message:String(error)}`;
+}
 // Mount inputs lazily without WORKERFS's prototype-bearing parent cache.
-export function mountInputs(module:any,files:File[],names:string[]):InputReadMetrics {
+// A failed read reaches the engine as EIO: Emscripten turns only FS.ErrnoError
+// into an error code, and any other exception aborts the WebAssembly instance.
+export function mountInputs(module:any,files:File[],names:string[],onFailure?:(message:string)=>void):InputReadMetrics {
   const fs=module.FS,workerfs=module.WORKERFS;
   fs.mkdir('/input');fs.mount(workerfs,{},'/input');
-  const reads=cachedInputReads(workerfs);
+  const cached=cachedInputReads(workerfs);
+  const reads={metrics:cached.metrics,read(stream:any,buffer:Uint8Array,offset:number,length:number,position:number){
+    try{return cached.read(stream,buffer,offset,length,position);}
+    catch(error){if(error instanceof fs.ErrnoError)throw error;onFailure?.(inputReadFailure(stream.node.name,error));throw new fs.ErrnoError(29);}
+  }};
   const root=fs.lookupPath('/input').node;
   root.contents=Object.create(null);
   const directoryMode=root.mode,fileMode=(directoryMode&0o7777)|0o100000;
