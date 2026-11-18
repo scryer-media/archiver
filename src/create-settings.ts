@@ -83,7 +83,7 @@ export class CreationSettings {
     const select=(setting:string,choices:(string|number)[],text:(value:string)=>string,value:string|number,apply:(value:string)=>void)=>{const input=document.createElement('select');input.setAttribute('aria-label',setting+' for '+label);for(const choice of choices){const option=document.createElement('option');option.value=String(choice);option.textContent=text(String(choice));input.append(option);}input.value=String(value);input.addEventListener('change',()=>apply(input.value));return input;};
     const cell=(...inputs:HTMLElement[])=>{const td=document.createElement('td');td.append(...inputs);return td;};
     const name=document.createElement('th'),path=document.createElement('span'),type=document.createElement('small');name.scope='row';path.textContent=label;type.textContent=this.detections[index]?.label||'Detecting…';type.title=this.detections[index]?.reason||'';name.append(path,type);row.append(name);
-    row.append(cell(select('Compression',this.format==='zip'?['deflate','copy']:codecs,codec=>codecLabels[codec]||codec,plan.codec||'lzma2',codec=>commit({codec,level:undefined}))));
+    row.append(cell(select('Compression',this.format==='zip'?['deflate','copy']:codecs,codec=>codecLabels[codec]||codec,plan.codec||'lzma2',codec=>commit({codec,level:undefined,deltaDistance:undefined,filter:usesFilter(codec)?this.recommendation(index).filter||'none':'none'}))));
     const bounds=levels[plan.codec||''];
     row.append(bounds?cell(select('Level',Array.from({length:bounds[1]-bounds[0]+1},(_,at)=>bounds[0]+at),level=>level,plan.level??bounds[2],level=>commit({level:Number(level)}))):unused());
     if(seven){
