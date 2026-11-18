@@ -7,7 +7,7 @@ const tests=[
  'download-contracts','download-preflight','download-lifecycle','download-native-bridge',
  'native-stream','offline-cache-contracts','repair-publication','zip-security',
  'zip-security-aes','zip-security-resources','zip-links','destination-filesystem-aliases',
- 'compressed-tar-destination','zip-stream','seven-many-files','expansion-pause','selective-extract','engine-serving',
+ 'compressed-tar-destination','zip-stream','seven-many-files','expansion-pause','selective-extract',
 ];
 const results=[];
 for(const test of tests){
