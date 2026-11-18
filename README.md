@@ -1,6 +1,6 @@
 # Scryer Archive
 
-A standalone, local browser archive toolkit. Files and passwords stay on the device. The app has no accounts, ads, telemetry, file-upload endpoints, or server processing.
+A standalone, local browser archive toolkit. Files and passwords stay on the device. The app has no accounts, telemetry, file-upload endpoints, or server processing.
 
 ## Develop locally
 
