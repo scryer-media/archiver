@@ -1,5 +1,6 @@
 import type {CreateOptions} from '../engine/client';
 import {ArchiveEngine} from './tool-engine';
+import {recoverySetName} from './archive-groups';
 import {ProgressTracker,duration,type ProgressSample} from './progress';
 
 type JobState='queued'|'active'|'done'|'failed'|'cancelled';
@@ -27,7 +28,7 @@ export class CreateQueue {
  constructor(private host:HTMLElement,private helpers:Helpers){host.addEventListener('click',event=>this.click(event));}
  get running(){return !!this.active;}
  add(input:CreateJobInput){
-  const name=['zip','7z','tar'].includes(input.format)||input.format.startsWith('tar.')?`${input.stem}.${input.format}`:input.format==='par2'?`${input.stem} recovery files`:`${input.files[0]?.name}.${input.format}`;
+  const name=['zip','7z','tar'].includes(input.format)||input.format.startsWith('tar.')?`${input.stem}.${input.format}`:input.format==='par2'?`${recoverySetName(input.files.map(file=>file.webkitRelativePath||file.name))??input.stem}.par2`:`${input.files[0]?.name}.${input.format}`;
   const job:Job={...input,id:this.next++,name,size:input.files.reduce((sum,file)=>sum+file.size,0),state:'queued'};
   // Download now goes ahead of anything only queued.
   const waiting=input.delivery==='download'?this.jobs.findIndex(item=>item.state==='queued'&&item.delivery==='hold'):-1;

@@ -6,6 +6,7 @@ import { ArchiveEngine as NativeEngine, type EngineProgress, type EngineResult, 
 import { createDestination, removeDestination, type DestinationJob } from '../engine/destination';
 import { acquireStorageLease, removeStorage, type StorageLease } from '../engine/storage';
 import { selectEntries } from '../engine/selection';
+import { recoverySetName } from './archive-groups';
 /** The ZIP download's name: the archive's name without its archive extensions, such as `photos.part01.rar` → `photos.zip`. */
 export function zipDownloadName(files:File[]):string{
   const first=[...files].map(file=>file.name).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))[0]??'';
@@ -131,6 +132,11 @@ export class ArchiveEngine {
     options={...options,fileOptions:plans.length?plans:undefined};
     if(options.format==='par3'||options.protection==='par3'||options.protection==='par3-embedded')throw new Error('PAR3 creation is not available; existing PAR3 sets can still be opened, verified and repaired.');
     if(options.protection==='par2'&&options.format!=='par2')return this.createProtected(files,stem,options);
+    if(options.format==='par2'){
+      // Named after the file or split set it protects (movie.part01.rar… gives movie.rar.par2), else after the selection.
+      const base=recoverySetName(files.map(file=>file.webkitRelativePath||file.name))??stem??'recovery';
+      return this.createInternal(files,options).then(result=>({...result,files:result.files.map(file=>file.name.startsWith('recovery.')?{...file,name:base+file.name.slice('recovery'.length)}:file)}));
+    }
     if(options.delivery!=='download')return this.createInternal(files,options);
     const format=options.format||'zip',compressedTar=/^tar\.(gz|gzip|zstd|zst|br|brotli|xz|bz2|bzip2|lzma|lz4|deflate|zlib)$/.test(format),tarPackage=format==='tar'||compressedTar;
     if(!compressedTar&&!['zip','tar','gz','gzip','zstd','zst','br','brotli','xz','bz2','bzip2','lzma','lz4','deflate','zlib'].includes(format))throw new Error('This format needs seekable or staged output; choose the ordinary output workflow');
@@ -225,7 +231,7 @@ export class ArchiveEngine {
     const archive=await this.createInternal(files,options);this.checkEpoch(epoch);
     if(!archive.files.length)throw new Error('The archive was not created');
     const named=archive.files.map(file=>file.name.startsWith('archive.')?{...file,name:(stem||'archive')+file.name.slice('archive'.length)}:file);
-    const first=named[0].name.split('/').pop()!;
+    const first=recoverySetName(named.map(file=>file.name))??named[0].name.split('/').pop()!;
     this.stage='recovery';this.emitProgress({phase:'recovery',message:'Creating PAR2 recovery files'});
     const parity=await this.createInternal(named.map(file=>new File([file.blob],file.name.split('/').pop()!)),{format:'par2',blockSize:options.blockSize,recoveryPercent:options.recoveryPercent,memoryLimit:options.memoryLimit,outputLimitBytes:options.outputLimitBytes});
     this.checkEpoch(epoch);

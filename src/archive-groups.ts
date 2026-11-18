@@ -11,6 +11,20 @@ export function archiveStem(name:string){
   .replace(/\.(rar|r\d\d|\d{3}|zip|z\d\d|7z|tar|tgz|tar\.[a-z0-9]+|gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib|zz|exe)$/,'');
 }
 
+/** The archive one volume belongs to, case kept: movie.part01.rar and movie.r00 give movie.rar, movie.7z.001 gives movie.7z. */
+export function volumeSetName(name:string){
+ let match=/^(.+)\.part\d+\.(?:rar|exe)$/i.exec(name);if(match)return match[1]+'.rar';
+ match=/^(.+\.(?:7z|zip|tar))\.\d{3}$/i.exec(name);if(match)return match[1];
+ match=/^(.+)\.r\d\d$/i.exec(name);if(match)return match[1]+'.rar';
+ match=/^(.+)\.z\d\d$/i.exec(name);if(match)return match[1]+'.zip';
+ return name;
+}
+/** What a PAR2 set over these files is named after: the one file or split set they all belong to, if there is one. */
+export function recoverySetName(paths:string[]){
+ const names=new Set(paths.filter(path=>!recoveryName(path)).map(path=>volumeSetName(path.split('/').pop()||path)));
+ return names.size===1?[...names][0]:undefined;
+}
+
 export interface ArchiveGroup {name:string;files:File[];volumes:number;recovery:number;size:number}
 /** One group per archive set; recovery files join the set they protect and never form a job on their own. */
 export function groupArchives(files:File[],isArchive:(name:string)=>boolean):ArchiveGroup[]{

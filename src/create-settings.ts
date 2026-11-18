@@ -2,7 +2,7 @@ import {svg} from './icons';
 import {sniffFiles,recommendForFormat,type Detection} from './sniffer';
 import {unknownDetection} from './sniffer/model';
 import type {FileCreateOptions} from '../engine/client';
-import {uselessFile} from '../engine/skip-files';
+import {skipRule,garbageOnly,type SkipKind} from '../engine/skip-files';
 const logical=(file:File)=>file.webkitRelativePath||file.name;
 type Format = 'zip'|'7z';
 const codecs=['lzma2','lzma','ppmd','bzip2','zstd','deflate','lz4','brotli','copy'];
@@ -38,17 +38,19 @@ export class CreationSettings {
  setContext(format:string,memory:number,dictionary=8*1024*1024){this.format=format;this.memory=memory;this.dictionary=dictionary;this.render();}
  setEffort(value:'standard'|'max'){this.effort=value;this.render();this.changed();}
  setAdvanced(value:boolean){this.advanced=value;this.render();this.changed();}
- /** "Skip useless files": system and sync-client leftovers start out skipped. Simple mode always skips them; Advanced has the checkbox. */
- skipUseless=true;
+ /** Kinds of file left out automatically. Simple mode always skips garbage only; Advanced chooses, with garbage on at first. */
+ skipKinds=new Set<SkipKind>(garbageOnly);
  private dropped=new Set<string>();
  private kept=new Set<string>();
- setSkipUseless(value:boolean){this.skipUseless=value;this.render();this.changed();}
- private uselessActive(){return !this.advanced||this.skipUseless;}
+ setSkipKind(kind:SkipKind,value:boolean){if(value)this.skipKinds.add(kind);else this.skipKinds.delete(kind);this.render();this.changed();}
+ private activeKinds(){return this.advanced?this.skipKinds:garbageOnly;}
+ /** Why a folder stays out of the archive, or undefined when it goes in. */
+ directoryReason(name:string){return skipRule(name,true,this.activeKinds())?.what;}
  /** Why `file` stays out of the archive, or undefined when it goes in. */
- skipReason(file:File){const name=logical(file);if(this.kept.has(name))return undefined;if(this.dropped.has(name))return 'Skipped';return this.uselessActive()?uselessFile(name)?.what:undefined;}
+ skipReason(file:File){const name=logical(file);if(this.kept.has(name))return undefined;if(this.dropped.has(name))return 'Skipped';return skipRule(name,false,this.activeKinds())?.what;}
  toggleSkip(file:File){const name=logical(file);if(this.skipReason(file)){if(!this.dropped.delete(name))this.kept.add(name);}else{this.kept.delete(name);this.dropped.add(name);}this.render();this.changed();}
  included(){return this.files.filter(file=>!this.skipReason(file));}
- includedDirectories(directories:string[]){return this.uselessActive()?directories.filter(name=>!uselessFile(name,true)):directories;}
+ includedDirectories(directories:string[]){return directories.filter(name=>!this.directoryReason(name));}
  setFiles(files:File[]){
   this.abort?.abort();this.abort=new AbortController();const generation=++this.generation;
   this.files=[...files];this.detections=[];this.page=0;this.query='';this.inspecting=files.length>0;this.completed=0;this.skipped=false;const names=new Set(files.map(file=>file.webkitRelativePath||file.name));
@@ -62,7 +64,7 @@ export class CreationSettings {
  private status(){return this.inspecting?'Inspecting files · '+this.completed+' / '+this.files.length:this.skipped?'Inspection skipped · using general defaults':'File settings';}
  cancelInspection(){if(!this.inspecting)return;this.abort?.abort();this.detections=this.files.map(file=>unknownDetection(file.webkitRelativePath||file.name,'Inspection skipped; using general defaults.'));this.inspecting=false;this.skipped=true;this.pending=Promise.resolve();this.render();}
  ready(){return this.pending;}
- reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.dropped.clear();this.kept.clear();this.skipUseless=true;this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
+ reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.dropped.clear();this.kept.clear();this.skipKinds=new Set(garbageOnly);this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
  private recommendation(index:number):FileCreateOptions{
   const name=this.files[index].webkitRelativePath||this.files[index].name;
   const detection=this.detections[index];

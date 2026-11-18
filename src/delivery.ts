@@ -1,6 +1,6 @@
 export type DeliveryChoice='auto'|'download'|'files';
 export interface DeliveryEntry {name:string;size:number;isDirectory:boolean}
-export interface DeliveryContext {mode:'extract'|'create';choice:DeliveryChoice;format:string;inputNames:string[];inputFormatHint?:string;inputBytes:number;maxInputFileBytes?:number;inputCount:number;directoryCount:number;entries?:DeliveryEntry[];available:boolean;unavailableReason?:string;/** False when the browser cannot write to a folder; undefined is treated as true. */folderAccess?:boolean}
+export interface DeliveryContext {mode:'extract'|'create';choice:DeliveryChoice;format:string;inputNames:string[];inputFormatHint?:string;inputBytes:number;maxInputFileBytes?:number;inputCount:number;directoryCount:number;entries?:DeliveryEntry[];available:boolean;unavailableReason?:string;/** False when the browser cannot write to a folder; undefined is treated as true. */folderAccess?:boolean;/** Create: recovery files are added to the archive. */recovery?:boolean}
 export interface DeliveryDecision {stream:boolean;blocked:boolean;reason:string;eligible:boolean;requiresInspection?:boolean;/** Stream every extracted file as one ZIP download. */zip?:boolean}
 export const LARGE_DELIVERY_BYTES=128*1024*1024;
 const nativeStreams=new Set(['gz','gzip','bz2','bzip2','xz','lzma','zstd','zst','br','brotli','lz4','deflate','zlib']);
@@ -17,6 +17,8 @@ export function chooseDelivery(context:DeliveryContext):DeliveryDecision{
  if(context.mode==='create'&&(context.format==='tar'||context.format.startsWith('tar.'))&&(!Number.isSafeInteger(context.maxInputFileBytes??0)||(context.maxInputFileBytes??0)<0))return {stream:false,blocked:true,eligible:false,reason:'This file size is not supported by this browser.'};
  if(context.choice==='files')return {stream:false,blocked:false,eligible:true,reason:'Prepare files in browser storage, then choose where to save them.'};
  if(context.mode==='create'){
+  // Recovery data is computed over the finished archive, so it cannot go to Downloads while it is still being written.
+  if(context.recovery)return {stream:false,blocked:context.choice==='download',eligible:false,reason:'Recovery files are made from the finished archive, so it is prepared in browser storage first.'};
   if(context.format.startsWith('tar.')&&nativeStreams.has(context.format.slice(4))){const decision=result(true,'',context.inputBytes>=LARGE_DELIVERY_BYTES);return {...decision,reason:decision.reason+' Temporary TAR storage is required.'};}
   if(!['zip','tar',...nativeStreams].includes(context.format))return result(false,'This format needs seekable output or creates multiple recovery files. Prepare files to save, or choose a stream-compatible format.');
   if(nativeStreams.has(context.format)&&(context.inputCount!==1||context.directoryCount>0))return result(false,'A standalone compression stream takes exactly one file and no folders.');
