@@ -1,8 +1,19 @@
-# Archiver
+<p align="center">
+  <a href="https://archiver.scryer.media"><img src=".github/readme/hero.png" alt="Archiver" width="720"></a>
+</p>
 
-Free archive tool that runs in your browser: [archiver.scryer.media](https://archiver.scryer.media)
+<p align="center">
+  Free archive tool that runs in your browser.<br>
+  Open, create and repair archives without installing anything. Your files never leave your device.
+</p>
 
-Open, create and repair archives without installing anything. Your files never leave your device.
+<p align="center">
+  <a href="https://archiver.scryer.media"><b>archiver.scryer.media</b></a>
+</p>
+
+<p align="center">
+  <img src=".github/readme/extract.png" alt="Archiver showing the contents of a ZIP file" width="800">
+</p>
 
 ## Features
 
