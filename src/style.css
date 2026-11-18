@@ -34,7 +34,7 @@ h2{font-size:15px;line-height:1.4;font-weight:600;margin:0}
 .file-row{display:flex;align-items:center;gap:14px;min-height:52px;padding:8px 16px;border-bottom:1px solid var(--border)}.file-row:last-child{border-bottom:0}
 .file-symbol{width:32px;height:32px;flex:none;border-radius:8px;background:var(--raised);color:var(--link);display:flex;align-items:center;justify-content:center}.file-symbol svg{width:18px;height:18px}
 .file-name{flex:1;min-width:0;overflow-wrap:anywhere}.file-size{font-size:13px;color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
-.file-list>[data-more]{margin:8px 12px}.empty{font-size:14px;margin:0;padding:16px;color:var(--muted);overflow-wrap:anywhere}
+.list-more{padding:10px 16px;font-size:12px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}.queue-files>.list-more{display:block;min-height:0;padding:8px 0}.empty{font-size:14px;margin:0;padding:16px;color:var(--muted);overflow-wrap:anywhere}
 
 .options,.advanced-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px 16px;margin-top:24px}
 .options label,.advanced-options label,.memory-options label{display:flex;flex-direction:column;gap:8px;min-width:0;font-size:12px;font-weight:500;color:var(--label)}

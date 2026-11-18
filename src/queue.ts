@@ -1,3 +1,4 @@
+import {loadOnScroll,moreLine} from './scroll-more';
 import type {ExtractionOptions} from '../engine/client';
 import {ArchiveEngine,zipDownloadName} from './tool-engine';
 import {downloadZip} from './zip-download';
@@ -49,7 +50,6 @@ export class ExtractionQueue {
   else if(action==='cancel'&&job&&job===this.active)void this.cancelActive();
   else if((action==='keep'||action==='stop')&&job?.pause)job.pause.answer(action==='keep');
   else if(action==='save'&&job?.outputs){if(job.outputs.length===1)this.helpers.save(job.outputs[0]);else{job.open=!job.open;job.shown=job.shown||PAGE;this.render();}}
-  else if(action==='more'&&job){job.shown=(job.shown||PAGE)+PAGE;this.render();}
   else if(action==='save-all'&&job?.outputs&&!job.saving)void this.saveAll(job);
   else if(action==='file'&&job?.outputs){const file=job.outputs[Number(button.dataset.index)];if(file)this.helpers.save(file);}
  }
@@ -153,10 +153,22 @@ export class ExtractionQueue {
  }
  private meta(job:Job){const {size}=this.helpers;const parts=[size(job.size)];if(job.volumes>1)parts.push(`${job.volumes} parts`);if(job.recovery)parts.push(`${job.recovery} recovery`);return parts.join(' · ');}
  private files(job:Job){
-  const {svg,esc,size}=this.helpers,outputs=job.outputs!,shown=Math.min(outputs.length,job.shown||PAGE);let html='<ul class="queue-files">';
-  for(let index=0;index<shown;index++){const file=outputs[index];html+=`<li><span class="file-name">${esc(file.name)}</span><span class="file-size">${size(file.blob.size)}</span><button class="download" data-queue="file" data-job="${job.id}" data-index="${index}" aria-label="Download ${esc(file.name)}">${svg('arrow')}</button></li>`;}
-  if(shown<outputs.length)html+=`<li><button class="quiet" data-queue="more" data-job="${job.id}">${svg('down')} Show ${Math.min(PAGE,outputs.length-shown)} more · ${outputs.length-shown} remaining</button></li>`;
+  const outputs=job.outputs!,shown=Math.min(outputs.length,job.shown||PAGE);let html='<ul class="queue-files">';
+  for(let index=0;index<shown;index++)html+=this.fileRow(job,index);
+  if(shown<outputs.length)html+=`<li class="list-more" data-more="${job.id}">${moreLine(shown,outputs.length)}</li>`;
   return html+'</ul>';
+ }
+ private fileRow(job:Job,index:number){
+  const {svg,esc,size}=this.helpers,file=job.outputs![index];
+  return `<li><span class="file-name">${esc(file.name)}</span><span class="file-size">${size(file.blob.size)}</span><button class="download" data-queue="file" data-job="${job.id}" data-index="${index}" aria-label="Download ${esc(file.name)}">${svg('arrow')}</button></li>`;
+ }
+ /** Adds the job's next rows in place, so the list keeps its scroll position. */
+ private loadMore(job:Job,line:Element){
+  const outputs=job.outputs;if(!outputs)return;
+  const from=Math.min(outputs.length,job.shown||PAGE),to=Math.min(outputs.length,from+PAGE);job.shown=to;
+  let html='';for(let index=from;index<to;index++)html+=this.fileRow(job,index);
+  line.insertAdjacentHTML('beforebegin',html);
+  if(to<outputs.length){line.textContent=moreLine(to,outputs.length);loadOnScroll(line,()=>this.loadMore(job,line));}else line.remove();
  }
  private row(job:Job){
   const {svg,esc}=this.helpers,name=esc(job.name);
@@ -175,6 +187,7 @@ export class ExtractionQueue {
   const start=!this.running&&queued?`<button class="primary" data-queue="start">${svg('play')} Start queue</button>`:'';
   const place=this.destination?`${svg('folder')} ${esc(this.destination.name)}${!this.running?` <button class="quiet" data-queue="folder">${svg('folder')} Change</button>`:''}`:folderAccess()?`${svg('folder')} No folder chosen · single files go to Downloads, others wait here to be saved <button class="quiet" data-queue="folder">${svg('folder')} Choose folder</button>`:this.helpers.streaming()?`${svg('arrow')} Everything goes to Downloads; archives with several files arrive as one .zip`:`${svg('arrow')} Finished archives wait here; save each as one .zip`;
   this.host.innerHTML=`<div class="queue-head"><div><h2>Extracting</h2><span class="queue-count">${done} of ${counted} done</span></div><div class="queue-actions">${this.running?`<button class="danger" data-queue="cancel-all">${svg('close')} Cancel all</button>`:finished?`<button class="quiet" data-queue="clear">${svg('trash')} Clear finished</button>`:''}<button class="quiet" data-queue="add">${svg('plus')} Add archives</button>${start}</div></div><ol class="queue-list">${this.jobs.map(job=>this.row(job)).join('')}</ol><div class="queue-foot"><span class="queue-folder">${place}</span><dl><div><dt>Remaining</dt><dd>${size(remaining)}</dd></div><div><dt>Elapsed</dt><dd data-field="elapsed">${this.started?duration(((this.finishedAt||performance.now())-this.started)/1000):'—'}</dd></div></dl></div>`;
+  for(const line of this.host.querySelectorAll<HTMLElement>('[data-more]')){const job=this.find(Number(line.dataset.more));if(job)loadOnScroll(line,()=>this.loadMore(job,line));}
   this.renderActive();
  }
  private renderActive(){

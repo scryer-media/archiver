@@ -7,6 +7,7 @@ import './style.css';
 import './dark.css';
 import './workflows.css';
 import {svg} from './icons';
+import {loadOnScroll,moreLine} from './scroll-more';
 import { ArchiveEngine, zipDownloadName } from './tool-engine';
 import {downloadZip} from './zip-download';
 import { ProgressTracker, duration, type ProgressSample } from './progress';
@@ -17,7 +18,7 @@ import { destinationPathRegistry } from '../engine/destination';
 import { generatePassword } from './password';
 import {CreationSettings} from './create-settings';
 import {ExtractionQueue} from './queue';
-import {captureFlight} from './fly';
+import {handOff} from './fly';
 import {CreateQueue,archiveStem,type Delivery} from './create-queue';
 import {groupArchives,recoveryName} from './archive-groups';
 type Mode='extract'|'create';
@@ -118,7 +119,7 @@ function notice(message:string,error=false){$('#notice').textContent=message;$('
 function setMode(next:Mode){if(busy||saving)return;engine.dispose();mode=next;creationSettings.reset();($('#solid') as HTMLInputElement).checked=true;($('#dictionary') as HTMLSelectElement).value='8388608';($('#encrypt-headers') as HTMLInputElement).checked=true;listedEntries=undefined;latestMetadata=[];($('#archive-links') as HTMLSelectElement).value='reject';($('#delivery') as HTMLSelectElement).value='auto';files=[];directories=[];outputs=[];outputDirectories=[];repairedInputs=[];recoveryChecked=false;selectedArchive=false;$('#selection').hidden=true;$('#results').hidden=true;$('#notice').hidden=true;$('#dropzone').hidden=false; document.querySelectorAll('[data-mode]').forEach(b=>{b.classList.toggle('active',b.getAttribute('data-mode')===mode);b.setAttribute('aria-pressed',String(b.getAttribute('data-mode')===mode));});const copy={extract:['Extract archive','','Drop archives here','ZIP, 7z, RAR, TAR and compressed streams','Choose archives'],create:['Create archive','','Drop files or folders here','Anything you drop goes into the archive','Files'],verify:['A little peace of mind.','Check your files against PAR2 or PAR3 recovery data.','Drop files to verify','Include source files and matching recovery files','Choose files to verify'],repair:['Give your files another chance.','Add damaged files with PAR2, PAR3, RAR recovery records or REV volumes.','Drop files to repair','Include every available recovery volume','Choose repair files']}[mode];['tool-title','tool-description','drop-title','drop-description'].forEach((id,i)=>$('#'+id).textContent=copy[i]);$('#browse').innerHTML=mode==='create'?svg('file')+' Files':svg('plus')+' '+copy[4];$('#browse-folder').hidden=mode!=='create';$('#folder-note').hidden=mode!=='create'||'showDirectoryPicker' in window;$('#format-label').hidden=mode!=='create';$('#password-label').hidden=false;($('#password') as HTMLInputElement).value='';($('#password') as HTMLInputElement).type='password';$('#show-password').innerHTML=svg('eye');$('#show-password').setAttribute('aria-label','Show password');$('#password-announcement').textContent='';updateFormat();}
 function renderRows(selector:string,count:number,row:(index:number)=>string,empty=''){
  const target=$(selector);target.innerHTML='';let shown=0;
- const more=()=>{target.querySelector('[data-more]')?.remove();const end=Math.min(count,shown+200);let html='';for(;shown<end;shown++)html+=row(shown);target.insertAdjacentHTML('beforeend',html);if(shown<count){const button=document.createElement('button');button.className='quiet';button.dataset.more='';button.textContent=`Show next ${Math.min(200,count-shown)} · ${count-shown} remaining`;button.onclick=more;target.append(button);}};
+ const more=()=>{target.querySelector('[data-more]')?.remove();const end=Math.min(count,shown+200);let html='';for(;shown<end;shown++)html+=row(shown);target.insertAdjacentHTML('beforeend',html);if(shown<count){const line=document.createElement('div');line.className='list-more';line.dataset.more='';line.textContent=moreLine(shown,count);target.append(line);loadOnScroll(line,more);}};
  if(count)more();else target.innerHTML=empty;
 }
 function accept(incoming:File[]){if(busy||saving||(!incoming.length&&!directories.length))return;listedEntries=undefined;latestMetadata=[];$('#metadata-download').hidden=true;repairedInputs=[];recoveryChecked=false;outputs=[];outputDirectories=[];($('#input-format') as HTMLSelectElement).value='';$('#save-all').hidden=true;files=mode==='create'?[...files,...incoming]:incoming;if(mode==='create')creationSettings.setFiles(files); selectedArchive=false; $('#dropzone').hidden=true;$('#selection').hidden=false;$('#results').hidden=true;$('#notice').hidden=true;renderRows('#file-list',files.length+directories.length,index=>{if(index>=files.length)return `<div class="file-row"><span class="file-symbol">${svg('folder')}</span><span class="file-name">${esc(directories[index-files.length])}</span><span class="file-size">Folder</span></div>`;const f=files[index];return `<div class="file-row">${recoveryName(f.name)?`<span class="file-symbol recovery" title="Recovery file">${svg('shield')}</span>`:`<span class="file-symbol">${svg('box')}</span>`}<span class="file-name">${esc(f.webkitRelativePath||f.name)}</span><span class="file-size">${size(f.size)}</span></div>`;});$('#selection-title').textContent=`${files.length} ${files.length===1?'file':'files'}${directories.length?` · ${directories.length} folders`:''} selected`;$('#run').innerHTML=(mode==='create'?'Create archive':files.some(file=>archiveName(file.name))||!files.some(file=>/\.(par2|par3|rev)$/i.test(file.name))?'Open archive':'Verify files')+svg(mode==='create'?'box':'arrow');$('#action-hint').textContent=`${size(files.reduce((a,f)=>a+f.size,0))} total`;updateFormat();}
@@ -162,9 +163,13 @@ async function queueCreate(delivery:Delivery){
  catch(error){notice(error instanceof Error?error.message:String(error),true);return;}
  finally{busy=false;lockControls(false);($('#run') as HTMLButtonElement).disabled=false;$('#run').innerHTML=label;}
  const format=($('#format') as HTMLSelectElement).value,stem=archiveStem([...files.map(file=>file.webkitRelativePath||file.name),...directories]);
- const flight=captureFlight([...document.querySelectorAll('#file-list:not([hidden]) .file-row, #file-settings:not([hidden]) tbody tr')]);
- const {name,id}=createQueue.add({stem,format,files:[...files],options:createOptions(),stream:decision.stream,delivery});
- setMode('create');flight(()=>createQueue.rowFor(id));notice(delivery==='hold'?`${name} is queued. Download it from the queue when it’s done.`:`Creating ${name}. It goes to your browser’s Downloads.`);$('#notice').classList.add('screen-reader-only');
+ const rows=[...document.querySelectorAll('#file-list:not([hidden]) .file-row, #file-settings:not([hidden]) tbody tr')],input={stem,format,files:[...files],options:createOptions(),stream:decision.stream,delivery};
+ const host=$('#create-queue'),wasHidden=host.hidden;let name='';
+ // The form stays put, locked, until its files have landed in the queue.
+ busy=true;lockControls(true);
+ try{await handOff(rows,()=>{const added=createQueue.add(input);name=added.name;return ()=>createQueue.rowFor(added.id);},wasHidden?host:undefined);}
+ finally{busy=false;lockControls(false);}
+ setMode('create');notice(delivery==='hold'?`${name} is queued. Download it from the queue when it’s done.`:`Creating ${name}. It goes to your browser’s Downloads.`);$('#notice').classList.add('screen-reader-only');
 }
 /** An archive already opened on screen goes to the extraction queue, so it keeps running in its own engine beside creates and other tabs. */
 async function queueExtract(toFolder:boolean){
