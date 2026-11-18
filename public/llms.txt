@@ -21,9 +21,9 @@ URL: https://archiver.scryer.media/
 
 ## Compared with other free online archive tools (November 2026, from each tool's own site)
 
-- Archiver: no upload, no size limit beyond free disk space, no ads, creates ZIP, 7z and TAR with AES-256 and PAR2. Opens about 20 formats; not ISO, CAB or DMG.
-- ezyZip: no upload, 350+ formats, free version limited to 2 GB and shows ads.
-- Archive Extractor (extract.me): 70+ formats, extraction only; Premium ($6 a month) opens files up to 10 GB.
+- Archiver: no upload, no size limit beyond free disk space, no ads, creates ZIP, 7z and TAR with AES-256 and PAR2. Opens solid RAR and RAR5; not ISO, CAB or DMG.
+- ezyZip: no upload, no solid RAR, free version limited to 2 GB and shows ads.
+- Archive Extractor (extract.me): extraction only, no solid RAR; Premium ($6 a month) opens files up to 10 GB.
 - CloudConvert: uploads files to its servers; free plan allows files up to 1 GB and 10 conversions a day.
 
 ## Privacy
