@@ -90,7 +90,9 @@ export class CreationSettings {
   if(this.inspecting||this.skipped||this.advanced){const row=document.createElement('div');row.className='inspection-row';const state=document.createElement('p');state.className='inspection-status';state.setAttribute('role','status');state.textContent=this.status();row.append(state);this.host.append(row);}
   if(!this.advanced)return;
   const search=document.createElement('input');search.type='search';search.placeholder='Find a file';search.setAttribute('aria-label','Find a file');search.value=this.query;search.className='file-settings-search';search.oninput=()=>{this.query=search.value;this.page=0;const cursor=search.selectionStart;this.render();const next=this.host.querySelector<HTMLInputElement>('.file-settings-search');next?.focus();if(cursor!==null)next?.setSelectionRange(cursor,cursor);};this.host.append(search);
-  const indices=this.files.map((_file,index)=>index).filter(index=>(this.files[index].webkitRelativePath||this.files[index].name).toLocaleLowerCase().includes(this.query.toLocaleLowerCase()));
+  const matches=this.files.map((_file,index)=>index).filter(index=>(this.files[index].webkitRelativePath||this.files[index].name).toLocaleLowerCase().includes(this.query.toLocaleLowerCase()));
+  // Skipped files first, each group in selection order.
+  const indices=[...matches.filter(index=>this.skipReason(this.files[index])),...matches.filter(index=>!this.skipReason(this.files[index]))];
   this.page=Math.min(this.page,Math.max(0,Math.ceil(indices.length/50)-1));
   const start=this.page*50,visible=indices.slice(start,start+50);
   const count=document.createElement('p');count.className='inspection-status';count.textContent=indices.length?(start+1)+'–'+(start+visible.length)+' of '+indices.length+' files':'No matching files';this.host.append(count);
