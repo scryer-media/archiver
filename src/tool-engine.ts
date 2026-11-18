@@ -5,6 +5,7 @@ import { createDownload, type DownloadJob } from '../engine/download';
 import { ArchiveEngine as NativeEngine, type EngineProgress, type EngineResult, type CreateOptions, type ExtractionOptions } from '../engine/client';
 import { createDestination, removeDestination, type DestinationJob } from '../engine/destination';
 import { acquireStorageLease, removeStorage, type StorageLease } from '../engine/storage';
+import { selectEntries } from '../engine/selection';
 /** The ZIP download's name: the archive's name without its archive extensions, such as `photos.part01.rar` → `photos.zip`. */
 export function zipDownloadName(files:File[]):string{
   const first=[...files].map(file=>file.name).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))[0]??'';
@@ -70,7 +71,7 @@ export class ArchiveEngine {
     return this.exclusive(async () => {
       if(this.isTarStream(files))return {complete:true,files:[],streamable:false,totalBytes:undefined as number|undefined};
       if(files.length===1&&(/\.(gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib)$/i.test(files[0].name)||!!format&&['gz','zstd','br','xz','bz2','lzma','lz4','deflate','zlib'].includes(format)))return {complete:true,files:[],streamable:true,totalBytes:undefined as number|undefined};
-      const members=(await this.listInternal(files,password,format,options)).entries?.filter(entry=>!entry.isDirectory);
+      const listed=(await this.listInternal(files,password,format,options)).entries,members=listed&&selectEntries(listed,options.only).filter(entry=>!entry.isDirectory);
       const total=members?.reduce((sum,entry)=>sum+entry.size,0);
       return {complete:true,files:[],streamable:members?.length===1&&(!members[0].isLink||options.links==='copy-safe'),totalBytes:members?.every(entry=>Number.isSafeInteger(entry.size)&&entry.size>=0)&&Number.isSafeInteger(total)?total:undefined};
     },options.outputLimitBytes,files);
@@ -94,7 +95,7 @@ export class ArchiveEngine {
         const raw=this.rawStream(files,format);
         let name=files[0]?.name.replace(/\.[^.]+$/,'')||'decoded.bin';
         if(!raw){
-          const metadata=await this.listInternal(files,password,format,options),members=metadata.entries?.filter(entry=>!entry.isDirectory);
+          const metadata=await this.listInternal(files,password,format,options),members=metadata.entries&&selectEntries(metadata.entries,options.only).filter(entry=>!entry.isDirectory);
           if(!members||members.length!==1)throw new Error('Streamed download extraction requires exactly one file; choose a folder for multiple files');
           if(members[0].isLink===undefined&&!await this.fallbackFiles(files))throw new Error('Native runtime needs an update before safe streamed archive downloads are available');
           if(members[0].isLink&&options.links!=='copy-safe')throw new Error('Archive links are not downloaded');

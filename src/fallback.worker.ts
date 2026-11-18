@@ -7,6 +7,7 @@ import {destinationDirectory,destinationParent} from '../engine/destination';
 import {ZipWriter,BlobReader,BlobWriter,configure} from '@zip.js/zip.js';
 import {ZipStream} from '../engine/zip-stream';
 import {openStrictZip,ZIP_STRICT_OPTIONS,exactZipOutput,validateZipPaths} from './zip-security';
+import {selectEntries} from '../engine/selection';
 configure({useWebWorkers:false});
 const safe = (name: string) => {
   const path = name.endsWith('/') ? name.slice(0, -1) : name;
@@ -110,22 +111,27 @@ self.onmessage=async({data})=>{
    const target=await output(),writer=new ZipWriter(target.writer,{password,encryptionStrength:3});for(const name of directories)await writer.add(name+'/',undefined,{directory:true});for(let i=0;i<files.length;i++){const file=files[i];progress('Packing '+file.name);const before=processedBytes;await writer.add(safe(names[i]),new BlobReader(file),{password,encryptionStrength:3,lastModDate:timestamp(file.lastModified)!==undefined?new Date(file.lastModified):undefined,compressionMethod:plans[i].codec==='copy'?0:8,level:plans[i].codec==='copy'?0:plans[i].level??6,onprogress:loaded=>inputProgress(before+loaded)});inputProgress(before+file.size);filesProcessed=i+1;emit();}emit(true,true);await writer.close();publish({files:[{name:'archive.zip',blob:await target.finish()}]});
   }return;
  }
- if(format&&nativeStreamFormat(format,'decompress')){if(files.length!==1)throw Error('Standalone streams require one input file');const name=safe(files[0].name.replace(/\.[^.]+$/,''))||'decoded.bin';const blob=await transform(files[0],false,format,name);publish({files:outputDirectory?[]:[{name,blob}],savedFiles:outputDirectory?1:undefined});return;}
+ if(format&&nativeStreamFormat(format,'decompress')){if(files.length!==1)throw Error('Standalone streams require one input file');const name=safe(files[0].name.replace(/\.[^.]+$/,''))||'decoded.bin';selectEntries([{name,isDirectory:false,isLink:false}],extraction?.only);const blob=await transform(files[0],false,format,name);publish({files:outputDirectory?[]:[{name,blob}],savedFiles:outputDirectory?1:undefined});return;}
  if(files.length!==1)throw Error('Select a single ZIP archive.');const file:Blob=files[0];
  const zip=await openStrictZip(file,password,extraction);
  try{
   const {entries,totalBytes}=zip;
   const metadata:ArchiveEntry[]=entries.map(entry=>({name:entry.filename,size:entry.directory?0:zip.sources.get(entry.filename)!.uncompressedSize,isDirectory:entry.directory,isLink:!!zip.metadata.get(entry.filename)?.link,metadata:zip.metadata.get(entry.filename)}));
   if(op==='list'){publish({entries:metadata,metadata,files:[]});return;}
-  begin('extract-output','Writing extracted ZIP members','output',totalBytes,entries.filter(entry=>!entry.directory).length);await ensureCapacity(totalBytes);
-  const totals={written:0,limit:totalBytes},result:{name:string;blob:Blob;metadata?:EntryMetadata}[]=[];
+  // A selection writes only the named regular files; every entry above was still validated.
+  const selection=extraction?.only===undefined?undefined:new Set(selectEntries(metadata,extraction.only).map(entry=>entry.name)),selected=(entry:{filename:string})=>!selection||selection.has(entry.filename);
+  const written=entries.filter(entry=>!entry.directory&&selected(entry)),writtenBytes=selection?written.reduce((sum,entry)=>sum+zip.sources.get(entry.filename)!.uncompressedSize,0):totalBytes;
+  begin('extract-output','Writing extracted ZIP members','output',writtenBytes,written.length);await ensureCapacity(writtenBytes);
+  const totals={written:0,limit:writtenBytes},result:{name:string;blob:Blob;metadata?:EntryMetadata}[]=[];
   for(const entry of entries)if(entry.directory)await entry.getData!(exactZipOutput(new WritableStream<Uint8Array>(),0,totals),{...ZIP_STRICT_OPTIONS,password});
-  if(outputDirectory)for(const entry of entries)if(entry.directory){await destinationDirectory(outputDirectory,entry.filename.replace(/\/$/,''));}
-  if(zipOut)for(const entry of entries)if(entry.directory){const name=safe(entry.filename).replace(/\/$/,''),modified=zip.metadata.get(entry.filename)?.modifiedTime;if(modified!==undefined)zipOut.setTime(name,modified);await zipOut.directory(name);}
-  for(const entry of entries){if(entry.directory)continue;progress('Extracting '+entry.filename);const target=await output(entry.filename,zip.metadata.get(entry.filename)?.modifiedTime);const source=zip.sources.get(entry.filename)!;await source.getData!(exactZipOutput(target.writer,source.uncompressedSize,totals),{...ZIP_STRICT_OPTIONS,password});if(!outputDirectory&&!downloadStream)result.push({name:entry.filename,blob:preserveFileMetadata(await target.finish(),entry.filename,zip.metadata.get(entry.filename)),metadata:zip.metadata.get(entry.filename)});}
-  if(totals.written!==totalBytes)throw Error('ZIP aggregate output size mismatch');
+  if(outputDirectory&&!selection)for(const entry of entries)if(entry.directory){await destinationDirectory(outputDirectory,entry.filename.replace(/\/$/,''));}
+  if(zipOut&&!selection)for(const entry of entries)if(entry.directory){const name=safe(entry.filename).replace(/\/$/,''),modified=zip.metadata.get(entry.filename)?.modifiedTime;if(modified!==undefined)zipOut.setTime(name,modified);await zipOut.directory(name);}
+  // Unselected members are still decoded and checked against their headers, into a discard sink.
+  const discarded={written:0,limit:Number.MAX_SAFE_INTEGER};
+  for(const entry of entries){if(entry.directory)continue;if(!selected(entry)){const source=zip.sources.get(entry.filename)!;await source.getData!(exactZipOutput(new WritableStream<Uint8Array>(),source.uncompressedSize,discarded),{...ZIP_STRICT_OPTIONS,password});continue;}progress('Extracting '+entry.filename);const target=await output(entry.filename,zip.metadata.get(entry.filename)?.modifiedTime);const source=zip.sources.get(entry.filename)!;await source.getData!(exactZipOutput(target.writer,source.uncompressedSize,totals),{...ZIP_STRICT_OPTIONS,password});if(!outputDirectory&&!downloadStream)result.push({name:entry.filename,blob:preserveFileMetadata(await target.finish(),entry.filename,zip.metadata.get(entry.filename)),metadata:zip.metadata.get(entry.filename)});}
+  if(totals.written!==writtenBytes)throw Error('ZIP aggregate output size mismatch');
   if(zipOut){await zipOut.finish();await zipWriter!.close();}
-  publish({metadata,savedFiles:outputDirectory?entries.filter(entry=>!entry.directory).length:undefined,directories:entries.filter(entry=>entry.directory).map(entry=>entry.filename.replace(/\/$/,'')),files:result});
+  publish({metadata,savedFiles:outputDirectory?written.length:undefined,directories:selection?[]:entries.filter(entry=>entry.directory).map(entry=>entry.filename.replace(/\/$/,'')),files:result});
  }finally{await zip.reader.close();}
  }catch(error){await zipWriter?.abort(error).catch(()=>{});self.postMessage({writeBudgetUsed:budget?.used??0,outputLimited:!budget?.gate?.stopped&&!!budget?.failure,expansionStopped:!!budget?.gate?.stopped,error:error instanceof Error?(error.message||error.name||'Archive operation failed'):(String(error)||'Archive operation failed'),nativeCodecError:error instanceof NativeStreamCodecError});}
 };

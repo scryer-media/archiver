@@ -421,6 +421,8 @@ pub fn run(r: &Request, format: &str) -> Result<Value, String> {
             json!({"message":format!("Created {format} stream"),"streamFormat":format,"outputBytes":limited.written}),
         );
     }
+    // A standalone stream holds exactly one entry: selecting it is the normal extraction.
+    crate::Selection::new(r.only.as_deref(), [(name.as_str(), false, false)])?;
     let output: Box<dyn Write> = if r.op == "list" {
         Box::new(io::sink())
     } else {

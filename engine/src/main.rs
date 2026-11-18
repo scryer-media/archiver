@@ -92,6 +92,77 @@ struct Request {
     solid: bool,
     #[serde(default = "default_limit", rename = "maxOutput")]
     max_output: u64,
+    /// Extract only these entries, named exactly as `list` reports them.
+    #[serde(default)]
+    only: Option<Vec<String>>,
+}
+/// Which entries an extraction writes. Every entry is still read and checked;
+/// unselected ones are decoded into a discard sink and never reach `/out`.
+pub(crate) struct Selection(Option<std::collections::HashSet<String>>);
+impl Selection {
+    /// `entries` yields each archive entry as `(name, is_directory, is_link)`.
+    fn new<'a>(
+        only: Option<&[String]>,
+        entries: impl IntoIterator<Item = (&'a str, bool, bool)>,
+    ) -> Result<Self, String> {
+        let Some(only) = only else {
+            return Ok(Self(None));
+        };
+        let wanted: std::collections::HashSet<String> = only.iter().cloned().collect();
+        let mut found = std::collections::HashSet::new();
+        for (name, directory, link) in entries {
+            if !wanted.contains(name) {
+                continue;
+            }
+            if directory {
+                return Err(format!("Selected entry is a directory: {name}"));
+            }
+            if link {
+                return Err(format!(
+                    "Selected entry is a link; links are not extracted selectively: {name}"
+                ));
+            }
+            found.insert(name.to_string());
+        }
+        if let Some(missing) = only.iter().find(|name| !found.contains(*name)) {
+            return Err(format!("Selected entry is not in the archive: {missing}"));
+        }
+        Ok(Self(Some(wanted)))
+    }
+    pub(crate) fn wants(&self, name: &str) -> bool {
+        self.0.as_ref().is_none_or(|names| names.contains(name))
+    }
+    pub(crate) fn everything(&self) -> bool {
+        self.0.is_none()
+    }
+}
+/// Where one member's bytes go: its output file, or nowhere when unselected.
+pub(crate) enum Output {
+    File(File),
+    Discard,
+}
+impl io::Write for Output {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        match self {
+            Self::File(file) => file.write(bytes),
+            Self::Discard => Ok(bytes.len()),
+        }
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        match self {
+            Self::File(file) => file.flush(),
+            Self::Discard => Ok(()),
+        }
+    }
+}
+/// Create the member's output file when it is selected; otherwise a discard sink.
+/// The parent directories are created only for a selected member.
+pub(crate) fn member_output(path: &Path, selected: bool) -> Result<Output, String> {
+    if !selected {
+        return Ok(Output::Discard);
+    }
+    fs::create_dir_all(path.parent().ok_or("Invalid output path")?).map_err(err)?;
+    create_output(path).map(Output::File)
 }
 impl Request {
     fn memory_budget(&self) -> Result<usize, String> {
@@ -218,6 +289,14 @@ fn validate_request(r: &Request) -> Result<(), String> {
     }
     if !r.file_options.is_empty() && !(r.op == "create" && matches!(r.format.as_str(), "" | "7z")) {
         return Err("Per-file encoding options are supported only for archive creation".into());
+    }
+    if let Some(only) = &r.only {
+        if r.op != "extract" {
+            return Err("Selected entries apply only to extraction".into());
+        }
+        if only.is_empty() {
+            return Err("Choose at least one entry to extract".into());
+        }
     }
     if r.encrypt_headers == Some(true) && r.password.is_empty() {
         return Err("Header encryption requires an archive password".into());
@@ -653,6 +732,21 @@ fn run(r: Request) -> Result<Value, String> {
             prefixes.push(prefix);
         }
         let plan = links::ReplayPlan::new(&inventory, &resolved, &prefixes)?;
+        let selection = Selection::new(
+            r.only.as_deref(),
+            members.iter().enumerate().map(|(i, e)| {
+                (
+                    e.name.as_str(),
+                    e.is_directory,
+                    redirections[i].is_some()
+                        || e.is_symlink
+                        || e.is_hardlink
+                        || e.is_file_copy
+                        || e.link_target.is_some()
+                        || e.link_target_bytes.is_some(),
+                )
+            }),
+        )?;
         let mut source_crcs = std::collections::HashMap::new();
         let mut cache = std::collections::HashMap::new();
         if r.op == "extract" && !resolved.is_empty() {
@@ -689,11 +783,12 @@ fn run(r: Request) -> Result<Value, String> {
                     continue;
                 }
                 if e.is_directory {
-                    fs::create_dir_all(dest).map_err(err)?;
+                    if selection.everything() {
+                        fs::create_dir_all(dest).map_err(err)?;
+                    }
                 } else {
-                    fs::create_dir_all(dest.parent().unwrap()).map_err(err)?;
                     let mut output = BoundedOutput::new(
-                        create_output(&dest)?,
+                        member_output(&dest, selection.wants(&e.name))?,
                         e.unpacked_size
                             .unwrap_or(r.max_output.saturating_sub(actual_output))
                             .min(r.max_output.saturating_sub(actual_output)),
@@ -729,6 +824,9 @@ fn run(r: Request) -> Result<Value, String> {
         }
         if r.op == "extract" {
             for (link, source) in resolved {
+                if !selection.wants(&inventory[link].name) {
+                    continue;
+                }
                 let dest = safe(&inventory[link].name)?;
                 fs::create_dir_all(dest.parent().ok_or("Invalid link output path")?)
                     .map_err(err)?;
@@ -903,6 +1001,12 @@ fn run(r: Request) -> Result<Value, String> {
             .iter()
             .map(|index| (inventory[*index].name.clone(), *index))
             .collect();
+        let selection = Selection::new(
+            r.only.as_deref(),
+            members
+                .iter()
+                .map(|e| (e.name(), e.is_directory(), e.is_symlink())),
+        )?;
         let mut source_crcs = std::collections::HashMap::new();
         let mut cache = std::collections::HashMap::new();
         for (index, e) in members.iter().enumerate() {
@@ -926,11 +1030,13 @@ fn run(r: Request) -> Result<Value, String> {
                     return Ok(true);
                 }
                 if e.is_directory() {
-                    fs::create_dir_all(dest)?;
+                    if selection.everything() {
+                        fs::create_dir_all(dest)?;
+                    }
                 } else {
-                    fs::create_dir_all(dest.parent().unwrap())?;
                     let mut output = BoundedOutput::new(
-                        create_output(&dest).map_err(io::Error::other)?,
+                        member_output(&dest, selection.wants(e.name()))
+                            .map_err(io::Error::other)?,
                         e.size(),
                     );
                     if let Some(index) = source_indices.get(e.name()) {
@@ -962,6 +1068,9 @@ fn run(r: Request) -> Result<Value, String> {
             .map_err(err)?;
             const REPLAY_COMPLETE: &str = "native verified source replay complete";
             for (link, source) in resolved {
+                if !selection.wants(&inventory[link].name) {
+                    continue;
+                }
                 let dest = safe(&inventory[link].name)?;
                 if let Some(bytes) = cache.get(&source) {
                     fs::create_dir_all(dest.parent().ok_or("Invalid link output path")?)
@@ -1140,6 +1249,27 @@ mod tests {
                 .is_ok()
             );
         }
+    }
+    #[test]
+    fn selection_names_only_listed_regular_files() {
+        let entries = [
+            ("a.txt", false, false),
+            ("dir", true, false),
+            ("link", false, true),
+        ];
+        assert!(Selection::new(None, entries).unwrap().wants("anything"));
+        let one = Selection::new(Some(&["a.txt".into()]), entries).unwrap();
+        assert!(one.wants("a.txt") && !one.wants("dir") && !one.everything());
+        for (name, reason) in [
+            ("missing", "not in the archive"),
+            ("dir", "directory"),
+            ("link", "link"),
+        ] {
+            let error = Selection::new(Some(&[name.into()]), entries).err().unwrap();
+            assert!(error.contains(reason), "{error}");
+        }
+        assert!(validate_request(&request(json!({"op":"list","paths":[],"only":["a"]}))).is_err());
+        assert!(validate_request(&request(json!({"op":"extract","paths":[],"only":[]}))).is_err());
     }
     #[test]
     fn incompatible_bcj2_encryption_is_rejected() {

@@ -1,5 +1,5 @@
 //! Bounded TAR-only libarchive integration. Host unpack APIs are never used.
-use super::{BoundedOutput, Request, create_output, err, links, safe};
+use super::{BoundedOutput, Request, Selection, create_output, err, links, member_output, safe};
 use serde_json::{Value, json};
 use std::{
     ffi::{CStr, CString, c_char, c_int, c_long, c_void},
@@ -492,6 +492,12 @@ fn run_inner(request: &Request) -> Result<Value, String> {
         })
         .collect();
     let plan = links::ReplayPlan::new(&members, &copies, &costs)?;
+    let selection = Selection::new(
+        request.only.as_deref(),
+        members
+            .iter()
+            .map(|m| (m.name.as_str(), m.directory, m.link.is_some())),
+    )?;
     let replay_headers = copies
         .iter()
         .filter(|(_, source)| !plan.cacheable.contains(source))
@@ -515,13 +521,15 @@ fn run_inner(request: &Request) -> Result<Value, String> {
         }
         let output = safe(&entry.member.name)?;
         if entry.member.directory {
-            fs::create_dir_all(output).map_err(err)?;
+            if selection.everything() {
+                fs::create_dir_all(output).map_err(err)?;
+            }
             continue;
         }
-        if let Some(parent) = output.parent() {
-            fs::create_dir_all(parent).map_err(err)?;
-        }
-        let mut writer = BoundedOutput::new(create_output(&output)?, entry.member.size);
+        let mut writer = BoundedOutput::new(
+            member_output(&output, selection.wants(&entry.member.name))?,
+            entry.member.size,
+        );
         let cache = plan
             .cacheable
             .contains(&index)
@@ -544,6 +552,9 @@ fn run_inner(request: &Request) -> Result<Value, String> {
     }
     drop(reader);
     for (index, source) in copies {
+        if !selection.wants(&members[index].name) {
+            continue;
+        }
         let output = safe(&members[index].name)?;
         if let Some(parent) = output.parent() {
             fs::create_dir_all(parent).map_err(err)?;

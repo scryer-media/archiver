@@ -6,6 +6,7 @@ import { installIoProgress } from './io-progress';
 import { mountInputs, protectMemoryDirectories } from './input';
 import { DiskVolume } from './opfs';
 import { DirectOutput } from './direct-output';
+import { selectEntries } from './selection';
 const MEMORY_LIMIT = 128 * 1024 * 1024;
 self.onmessage = async ({ data }) => {
   let budget:WriteBudget|undefined;
@@ -46,9 +47,10 @@ self.onmessage = async ({ data }) => {
       const archive=(signature[0]===0x37&&signature[1]===0x7a&&signature[2]===0xbc)||(signature[0]===0x52&&signature[1]===0x61&&signature[2]===0x72&&signature[3]===0x21);
       if(archive){
         self.postMessage({progress:{phase:'metadata',message:'Reading archive member sizes'}});
-        const metadata=runEngine({...options,op:'list',paths:names.map(name=>'/input/'+name),password:password??'',maxOutput:Number.MAX_SAFE_INTEGER});
+        const {only:_only,...listOptions}=options;
+        const metadata=runEngine({...listOptions,op:'list',paths:names.map(name=>'/input/'+name),password:password??'',maxOutput:Number.MAX_SAFE_INTEGER});
         if(metadata.error)throw new Error(metadata.error);
-        members=metadata.entries?.filter((entry:any)=>!entry.isDirectory);
+        members=metadata.entries&&selectEntries(metadata.entries,options.only).filter((entry:any)=>!entry.isDirectory);
         const totalBytes=members?.reduce((sum:number,entry:any)=>sum+entry.size,0);
         if(Array.isArray(members)&&members.every((entry:any)=>Number.isSafeInteger(entry.size)&&entry.size>=0)&&Number.isSafeInteger(totalBytes))totals={totalBytes,totalFiles:members.length};
       }

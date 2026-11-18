@@ -26,7 +26,7 @@ h2{font-size:15px;line-height:1.4;font-weight:600;margin:0}
 .secondary,.download{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-text)}.secondary:hover:not(:disabled),.download:hover:not(:disabled){background:var(--accent-soft-hover)}
 .quiet,.queue-x,.icon{background:var(--neutral);border-color:var(--border-strong);color:var(--text)}.quiet:hover:not(:disabled),.queue-x:hover:not(:disabled),.icon:hover:not(:disabled){background:var(--neutral-hover)}
 .danger{background:var(--danger-soft);border-color:var(--danger-line);color:var(--danger-text)}.danger:hover:not(:disabled),.queue-x[data-queue=cancel]:hover:not(:disabled),.queue-x[data-create=cancel]:hover:not(:disabled){background:var(--danger-soft-hover);border-color:var(--danger-line);color:var(--danger-text)}
-.download,.queue-x,.icon{width:40px;padding:0;flex:none}
+.download,.queue-x,.icon{width:40px;padding:0;flex:none}.download.working{pointer-events:none;color:transparent;position:relative}.download.working:after{content:"";position:absolute;inset:0;margin:auto;width:16px;height:16px;border:2px solid var(--accent-text);border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}@keyframes spin{to{transform:rotate(1turn)}}
 #run svg{order:-1}
 
 .selection-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.selection-head h3{font-size:15px;font-weight:600;margin:0}
