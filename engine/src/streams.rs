@@ -96,22 +96,33 @@ impl lzma_stream::SeqOutStream for Output<'_> {
         self.0.write_all(buf).map_err(|_| lzma_stream::Error::Write)
     }
 }
-fn props(budget: usize) -> lzma_stream::LzmaEncProps {
+/// The requested compression level for a stream, or the format's usual one when none was asked for.
+fn level(r: &Request, usual: u32, lowest: u32, highest: u32) -> Result<u32, String> {
+    match r.level {
+        None => Ok(usual),
+        Some(level) if (lowest..=highest).contains(&level) => Ok(level),
+        Some(_) => Err(format!(
+            "Compression level for this stream must be {lowest} to {highest}"
+        )),
+    }
+}
+fn props(budget: usize, level: u32) -> lzma_stream::LzmaEncProps {
     lzma_stream::LzmaEncProps::new()
-        .with_level(3)
+        .with_level(level)
         .with_num_threads(1)
         .with_dict_size((budget / 32).clamp(65536, 4 * 1024 * 1024) as u32)
 }
 fn encode(r: &Request, format: &str, input: &mut File, out: &mut dyn Write) -> Result<(), String> {
     match format {
         "zstd" => {
-            let mut writer = zstd::stream::write::Encoder::new(out, 3).map_err(err)?;
+            let mut writer =
+                zstd::stream::write::Encoder::new(out, level(r, 3, 1, 19)? as i32).map_err(err)?;
             copy(input, &mut writer)?;
             writer.finish().map_err(err)?;
         }
         "br" => {
             let params = brotli::enc::BrotliEncoderParams {
-                quality: 5,
+                quality: level(r, 5, 0, 11)? as i32,
                 lgwin: 22,
                 ..Default::default()
             };
@@ -119,13 +130,20 @@ fn encode(r: &Request, format: &str, input: &mut File, out: &mut dyn Write) -> R
             brotli::BrotliCompress(input, &mut output, &params).map_err(err)?;
         }
         "bz2" => {
-            let mut writer = bzip2_turbo::Encoder::new(out, bzip2_turbo::EncoderOptions::default());
+            let mut writer = bzip2_turbo::Encoder::new(
+                out,
+                bzip2_turbo::EncoderOptions {
+                    level: level(r, 5, 1, 9)?,
+                    ..Default::default()
+                },
+            );
             copy(input, &mut writer)?;
             writer.finish().map_err(err)?;
         }
         "xz" => {
             let budget = r.memory_budget()?;
-            let mut writer = lzma_stream::XzWriter::new(out, &props(budget)).map_err(err)?;
+            let mut writer =
+                lzma_stream::XzWriter::new(out, &props(budget, level(r, 3, 0, 9)?)).map_err(err)?;
             let block = r.block_size.unwrap_or(1024 * 1024);
             if block == 0 || block > budget as u64 / 4 {
                 return Err("XZ block size must be nonzero and at most one quarter of the algorithm memory budget".into());
@@ -136,7 +154,8 @@ fn encode(r: &Request, format: &str, input: &mut File, out: &mut dyn Write) -> R
         }
         "lzma" => {
             let mut encoder =
-                lzma_stream::LzmaEncoder::new(&props(r.memory_budget()?)).map_err(err)?;
+                lzma_stream::LzmaEncoder::new(&props(r.memory_budget()?, level(r, 3, 0, 9)?))
+                    .map_err(err)?;
             out.write_all(&encoder.properties()).map_err(err)?;
             let len = input.metadata().map_err(err)?.len();
             out.write_all(&len.to_le_bytes()).map_err(err)?;
@@ -145,23 +164,30 @@ fn encode(r: &Request, format: &str, input: &mut File, out: &mut dyn Write) -> R
                 .map_err(err)?;
         }
         "lz4" => {
+            if r.level.is_some() {
+                return Err("LZ4 frames have no compression levels".into());
+            }
             let mut writer = lz4_flex::frame::FrameEncoder::new(out);
             copy(input, &mut writer)?;
             writer.finish().map_err(err)?;
         }
         "deflate" => {
-            let mut writer =
-                flate2::write::DeflateEncoder::new(out, flate2::Compression::default());
+            let mut writer = flate2::write::DeflateEncoder::new(
+                out,
+                flate2::Compression::new(level(r, 6, 0, 9)?),
+            );
             copy(input, &mut writer)?;
             writer.finish().map_err(err)?;
         }
         "zlib" => {
-            let mut writer = flate2::write::ZlibEncoder::new(out, flate2::Compression::default());
+            let mut writer =
+                flate2::write::ZlibEncoder::new(out, flate2::Compression::new(level(r, 6, 0, 9)?));
             copy(input, &mut writer)?;
             writer.finish().map_err(err)?;
         }
         "gz" => {
-            let mut writer = flate2::write::GzEncoder::new(out, flate2::Compression::default());
+            let mut writer =
+                flate2::write::GzEncoder::new(out, flate2::Compression::new(level(r, 6, 0, 9)?));
             copy(input, &mut writer)?;
             writer.finish().map_err(err)?;
         }
@@ -488,5 +514,63 @@ mod tests {
                 );
             }
         }
+    }
+    #[test]
+    fn requested_levels_roundtrip_and_out_of_range_levels_fail() {
+        let directory = Temporary::new();
+        let source = directory.0.join("source");
+        let bytes: Vec<u8> = (0..65536).map(|i| ((i * 7) % 61) as u8).collect();
+        std::fs::write(&source, &bytes).unwrap();
+        for (format, top) in [
+            ("zstd", 19),
+            ("br", 11),
+            ("xz", 9),
+            ("bz2", 9),
+            ("lzma", 9),
+            ("deflate", 9),
+            ("zlib", 9),
+            ("gz", 9),
+        ] {
+            let mut usual = request();
+            usual.level = None;
+            let mut best = request();
+            best.level = Some(top);
+            let mut encoded = Vec::new();
+            encode(
+                &best,
+                format,
+                &mut File::open(&source).unwrap(),
+                &mut encoded,
+            )
+            .unwrap();
+            let path = directory.0.join(format);
+            std::fs::write(&path, &encoded).unwrap();
+            let mut decoded = Vec::new();
+            decode(&usual, format, File::open(&path).unwrap(), &mut decoded).unwrap();
+            assert_eq!(decoded, bytes, "{format} at level {top}");
+            let mut beyond = request();
+            beyond.level = Some(top + 1);
+            assert!(
+                encode(
+                    &beyond,
+                    format,
+                    &mut File::open(&source).unwrap(),
+                    &mut Vec::new()
+                )
+                .is_err(),
+                "{format} above {top}"
+            );
+        }
+        let mut lz4 = request();
+        lz4.level = Some(1);
+        assert!(
+            encode(
+                &lz4,
+                "lz4",
+                &mut File::open(&source).unwrap(),
+                &mut Vec::new()
+            )
+            .is_err()
+        );
     }
 }
