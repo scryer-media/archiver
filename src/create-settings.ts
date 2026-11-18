@@ -1,3 +1,4 @@
+import {svg} from './icons';
 import {sniffFiles,recommendForFormat,type Detection} from './sniffer';
 import {unknownDetection} from './sniffer/model';
 import type {FileCreateOptions} from '../engine/client';
@@ -69,7 +70,7 @@ export class CreationSettings {
  private effective(index:number){const auto=this.recommendation(index),file=this.files[index];return this.normalize(this.advanced?{...auto,...this.overrides.get(this.format+':'+(file.webkitRelativePath||file.name))}:auto);}
  private render(){
   this.host.replaceChildren();
-  if(this.inspecting||this.skipped||this.advanced){const row=document.createElement('div');row.className='inspection-row';const state=document.createElement('p');state.className='inspection-status';state.setAttribute('role','status');state.textContent=this.status();row.append(state);if(this.inspecting){const cancel=document.createElement('button');cancel.type='button';cancel.className='quiet';cancel.textContent='Skip inspection';cancel.disabled=this.locked();cancel.onclick=()=>this.cancelInspection();row.append(cancel);}this.host.append(row);}
+  if(this.inspecting||this.skipped||this.advanced){const row=document.createElement('div');row.className='inspection-row';const state=document.createElement('p');state.className='inspection-status';state.setAttribute('role','status');state.textContent=this.status();row.append(state);if(this.inspecting){const cancel=document.createElement('button');cancel.type='button';cancel.className='quiet';cancel.innerHTML=svg('skip')+' Skip inspection';cancel.disabled=this.locked();cancel.onclick=()=>this.cancelInspection();row.append(cancel);}this.host.append(row);}
   if(!this.advanced)return;
   const search=document.createElement('input');search.type='search';search.placeholder='Find a file';search.setAttribute('aria-label','Find a file');search.value=this.query;search.className='file-settings-search';search.oninput=()=>{this.query=search.value;this.page=0;const cursor=search.selectionStart;this.render();const next=this.host.querySelector<HTMLInputElement>('.file-settings-search');next?.focus();if(cursor!==null)next?.setSelectionRange(cursor,cursor);};this.host.append(search);
   const indices=this.files.map((_file,index)=>index).filter(index=>(this.files[index].webkitRelativePath||this.files[index].name).toLocaleLowerCase().includes(this.query.toLocaleLowerCase()));
@@ -103,7 +104,7 @@ export class CreationSettings {
    const thead=document.createElement('thead');thead.append(head);table.append(thead,body);
    const wrap=document.createElement('div');wrap.className='file-settings-table';wrap.append(table);this.host.append(wrap);
   }
-  if(indices.length>50){const navigation=document.createElement('div');navigation.className='file-settings-navigation';for(const [label,delta] of [['Previous',-1],['Next',1]] as const){const button=document.createElement('button');button.type='button';button.className='quiet';button.textContent=label;button.disabled=this.locked()||(delta<0?this.page===0:start+50>=indices.length);button.onclick=()=>{this.page+=delta;this.render();};navigation.append(button);}this.host.append(navigation);}
+  if(indices.length>50){const navigation=document.createElement('div');navigation.className='file-settings-navigation';for(const [label,delta] of [['Previous',-1],['Next',1]] as const){const button=document.createElement('button');button.type='button';button.className='quiet';button.innerHTML=delta<0?svg('left')+' '+label:label+' '+svg('right');button.disabled=this.locked()||(delta<0?this.page===0:start+50>=indices.length);button.onclick=()=>{this.page+=delta;this.render();};navigation.append(button);}this.host.append(navigation);}
   if(this.locked())this.host.querySelectorAll<HTMLInputElement|HTMLSelectElement|HTMLButtonElement>('input,select,button').forEach(input=>input.disabled=true);
  }
 }
