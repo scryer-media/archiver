@@ -43,8 +43,8 @@ h2{font-size:15px;line-height:1.4;font-weight:600;margin:0}
 select{appearance:none;-webkit-appearance:none;background-image:url(/chevron.svg)!important;background-repeat:no-repeat!important;background-position:right 12px center!important;background-size:16px!important;padding-right:38px!important}
 .selection-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap;min-width:0}.selection-title .creation-mode{margin:0}
 .file-symbol.recovery{color:var(--muted);opacity:.6}.file-symbol.ok{color:var(--ok)}.file-symbol.failed{color:var(--error-text)}.file-symbol.muted{color:var(--muted)}
-.password-input{position:relative;display:flex}.password-input input{padding-right:72px!important}.password-input button{position:absolute;right:5px;top:5px;bottom:5px;padding:0 12px;border-radius:8px}
-.password-actions{display:flex;gap:8px}.password-actions:not(:has(button:not([hidden]))){display:none}
+#password-label{grid-column:1/-1}.password-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.password-row>.password-input{flex:0 1 calc((100% - 32px)/3*1.2);min-width:240px}.password-row>button{flex:none;min-height:44px}.password-input{position:relative;display:flex}.password-input input{padding-right:84px!important}.password-input:not(:has(#copy-password:not([hidden]))) input{padding-right:48px!important}.field-icons{position:absolute;right:6px;top:0;bottom:0;display:flex;align-items:center;gap:2px}.field-icon{display:grid;place-items:center;width:34px;height:34px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--muted);transition:color .15s,background-color .15s}.field-icon:hover:not(:disabled){color:var(--text);background:var(--neutral)}.field-icon svg{width:18px;height:18px}.field-icon.copied{color:var(--ok)}#show-password{background:transparent}
+.password-actions:not(:has(button:not([hidden]))){display:none}
 .options input::placeholder,.advanced-options input::placeholder{color:var(--muted)}
 .options input:focus,.options select:focus,.advanced-options input:focus,.advanced-options select:focus{border-color:var(--focus);outline:none}
 
