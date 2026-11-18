@@ -118,7 +118,8 @@ export class ArchiveEngine {
       }
     },options.outputLimitBytes);
   }
-  create(files: File[], options: CreateOptions = {}) { return this.exclusive(() => {
+  /** `stem` names the archive ("photos" gives photos.zip); the engine itself always writes archive.*. */
+  create(files: File[], {stem,...options}: CreateOptions & {stem?: string} = {}) { return this.exclusive(() => {
     if(files.some(file=>!Number.isSafeInteger(file.size)||file.size<0))throw Error('Input file size is not supported by this browser');
     if(options.outputDirectory)throw Error('Archive creation does not support a selected output folder; choose a streamed download or prepared output');
     const plans=creationPlans(files.map(file=>file.webkitRelativePath||file.name),options);
@@ -139,7 +140,7 @@ export class ArchiveEngine {
     }
     for(const name of seen.keys()){let slash=name.indexOf('/');while(slash!==-1){if(seen.get(name.slice(0,slash))===false)throw new Error('Input file/directory collision');slash=name.indexOf('/',slash+1);}}
     if(!compressedTar&&!['zip','tar'].includes(format)&&(files.length!==1||options.directories?.length||options.password))throw new Error('Standalone streams require one file and no password or directories');
-    const name=compressedTar||['zip','tar'].includes(format)?'archive.'+format:(files[0]?.name||'archive')+'.'+format;
+    const name=compressedTar||['zip','tar'].includes(format)?(stem||'archive')+'.'+format:(files[0]?.name||'archive')+'.'+format;
     return this.deliver(name,downloadStream=>this.createInternal(files,{...options,downloadStream}));
   },options.outputLimitBytes); }
   private async deliver(name:string,action:(stream:WritableStream<Uint8Array>)=>Promise<EngineResult>):Promise<EngineResult>{
