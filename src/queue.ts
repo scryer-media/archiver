@@ -6,6 +6,7 @@ import {ProgressTracker,duration,type ProgressSample} from './progress';
 import {recoveryName,archiveStem,type ArchiveGroup} from './archive-groups';
 import {isOutputLimited} from '../engine/output-budget';
 import {checkRecovery} from './recovery';
+import {canPickFolder,tabCapacity} from './browser';
 import {askExpansion,expansionMessage,type ExpansionPause} from './expansion';
 
 type JobState='queued'|'active'|'needs-folder'|'done'|'failed'|'cancelled';
@@ -14,17 +15,8 @@ type Output={name:string;blob:Blob};
 export interface JobDelivery {stream:boolean;zip:boolean;totalBytes?:number}
 interface Job extends ArchiveGroup {destination?:FileSystemDirectoryHandle;delivery?:JobDelivery;id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];directories?:string[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean;saving?:string;pause?:ExpansionPause}
 interface Helpers {isArchive:(name:string)=>boolean;svg:(name:string)=>string;esc:(text:string)=>string;size:(bytes:number)=>string;canStart:()=>boolean;notice:(message:string,error?:boolean)=>void;addArchives:()=>void;save:(file:Output)=>void;streaming:()=>boolean}
-const folderAccess=()=>'showDirectoryPicker' in window;
+const folderAccess=canPickFolder;
 const PAGE=200;
-// Without disk-backed browser storage the engine falls back to a 128 MiB memory limit; stay under it so the queue's own budget trips first.
-const MEMORY_CAPACITY=120*1024*1024;
-/** How much a job may write while kept in this tab: most of the free browser storage, never more than the user's write budget. */
-async function tabCapacity(budget:number){
- if(typeof navigator.storage?.getDirectory!=='function')return Math.min(budget,MEMORY_CAPACITY);
- const estimate=await navigator.storage.estimate().catch(()=>undefined);
- if(estimate?.quota===undefined)return budget;
- return Math.min(budget,Math.max(0,Math.floor((estimate.quota-(estimate.usage||0))*0.8)));
-}
 const safePath=(name:string)=>{const parts=name.split('/');if(!name||name.startsWith('/')||/[\\\0:]/.test(name)||parts.some(part=>!part||part==='.'||part==='..'))throw new Error('Unsafe output path: '+name);return parts;};
 
 /** Extracts archive sets one after another. With a chosen folder everything goes there. Without one, an archive holding one file goes to Downloads. One holding several is kept in this tab when it fits, and one too large for the tab waits for a folder; where the browser cannot write to a folder it downloads as one ZIP instead. */
@@ -32,6 +24,8 @@ export class ExtractionQueue {
  private jobs:Job[]=[];private next=1;private engine?:ArchiveEngine;private active?:Job;private destination?:FileSystemDirectoryHandle;
  private tracker=new ProgressTracker();private timer?:ReturnType<typeof setInterval>;private started=0;private finishedAt=0;private stopping=false;private abortActive?:()=>void;
  constructor(private host:HTMLElement,private helpers:Helpers){host.addEventListener('click',event=>this.click(event));}
+ /** Redraws once the browser's capabilities are known, so the options shown match them. */
+ refresh(){this.render();}
  get running(){return !!this.active||this.stopping;}
  add(groups:ArchiveGroup[],password:string|undefined,format:string|undefined,options:ExtractionOptions,place:{destination?:FileSystemDirectoryHandle;delivery?:JobDelivery}={}){
   for(const group of groups)this.jobs.push({...group,...place,id:this.next++,password,format,options:{...options},state:'queued'});
@@ -43,6 +37,7 @@ export class ExtractionQueue {
   const action=button.dataset.queue,job=this.find(Number(button.dataset.job));
   if(action==='start')void this.start();
   else if(action==='add')this.helpers.addArchives();
+  else if(action==='zip'&&job?.state==='needs-folder')this.asZip(job);
   else if(action==='folder')void this.chooseFolder().then(chosen=>{if(chosen)this.resume();});
   else if(action==='cancel-all')void this.cancelAll();
   else if(action==='clear')this.clearFinished();
@@ -57,6 +52,8 @@ export class ExtractionQueue {
   try{this.destination=await (window as any).showDirectoryPicker({mode:'readwrite'});for(const job of this.jobs)if(job.state==='needs-folder'){job.state='queued';job.detail=undefined;job.destination=undefined;job.delivery=undefined;}this.render();return true;}
   catch(error){if((error as Error).name!=='AbortError')this.helpers.notice((error as Error).message,true);return false;}
  }
+ /** A job too large for this tab runs again as one streamed .zip download, which needs no folder and no browser storage. */
+ private asZip(job:Job){job.state='queued';job.detail=undefined;job.destination=undefined;job.delivery={stream:false,zip:true,totalBytes:job.delivery?.totalBytes};this.render();if(!this.running)void this.start();}
  private resume(){if(!this.running&&this.started&&this.jobs.some(job=>job.state==='queued'))void this.start();}
  async start(){
   if(this.running||!this.jobs.some(job=>job.state==='queued'))return;
@@ -106,7 +103,7 @@ export class ExtractionQueue {
  }
  /** A job too large for this tab: with folder access it waits for a folder and then runs there; otherwise it fails with the reason. */
  private needsFolder(job:Job,reason:string){
-  if(folderAccess()){job.state='needs-folder';job.detail=reason+' Choose a folder to extract it into.';}
+  if(folderAccess()){job.state='needs-folder';job.detail=reason+(this.helpers.streaming()?' Download it as one .zip, or choose a folder to extract it into.':' Choose a folder to extract it into.');}
   else{job.state='failed';job.detail=reason+' This browser can’t write to a folder, so open Archiver in one that can, such as Chrome or Edge.';}
  }
  /** Writes a finished in-tab job's files into a new subfolder of a folder the user picks; without folder access, downloads them one by one. */
@@ -176,7 +173,7 @@ export class ExtractionQueue {
   if(job.state==='active')return `<li class="queue-row active" data-row="${job.id}"><span class="file-symbol">${svg('box')}</span><div class="queue-main"><div class="queue-line"><span class="file-name">${name}</span><span class="queue-percent" data-field="percent"></span></div><progress max="100" aria-label="Progress for ${name}"></progress><div class="queue-line queue-stats"><span data-field="bytes"></span><span data-field="files"></span><span data-field="rate"></span><span data-field="eta"></span></div></div><button class="queue-x" data-queue="cancel" data-job="${job.id}" aria-label="Cancel ${name}">${svg('close')}</button></li>`;
   const symbol=job.state==='needs-folder'?`<span class="file-symbol muted">${svg('folder')}</span>`:job.state==='done'?`<span class="file-symbol ok">${svg('check')}</span>`:job.state==='failed'?`<span class="file-symbol failed">${svg('alert')}</span>`:job.state==='cancelled'?`<span class="file-symbol muted">${svg('close')}</span>`:`<span class="file-symbol">${svg('box')}</span>`;
   const detail=job.state==='queued'?this.meta(job):esc(job.saving||job.detail||'');
-  const action=job.state==='needs-folder'?`<button class="secondary" data-queue="folder" data-job="${job.id}">${svg('folder')} Choose folder &amp; retry</button>`:job.state==='queued'?`<button class="queue-x" data-queue="remove" data-job="${job.id}" aria-label="Remove ${name} from queue">${svg('close')}</button>`:job.outputs?.length?`${job.outputs.length>1?`<button class="secondary" data-queue="save-all" data-job="${job.id}"${job.saving?' disabled':''} aria-label="${folderAccess()?'Save all files to a folder':'Download all files as one ZIP'}">${svg(folderAccess()?'folder':'arrow')} ${folderAccess()?'Save all<span class="queue-wide"> to folder</span>':'Download<span class="queue-wide"> all as</span> .zip'}</button>`:''}<button class="secondary" data-queue="save" data-job="${job.id}" aria-expanded="${job.outputs.length>1?String(!!job.open):'false'}">${job.outputs.length===1?`${svg('arrow')} Save`:job.open?`${svg('up')} Hide files`:`${svg('down')} Show files`}</button>`:'';
+  const action=job.state==='needs-folder'?`<div class="queue-pause-actions">${this.helpers.streaming()?`<button class="secondary" data-queue="zip" data-job="${job.id}">${svg('arrow')} Download as .zip</button>`:''}<button class="secondary" data-queue="folder" data-job="${job.id}">${svg('folder')} Choose folder &amp; retry</button></div>`:job.state==='queued'?`<button class="queue-x" data-queue="remove" data-job="${job.id}" aria-label="Remove ${name} from queue">${svg('close')}</button>`:job.outputs?.length?`${job.outputs.length>1?`<button class="secondary" data-queue="save-all" data-job="${job.id}"${job.saving?' disabled':''} aria-label="${folderAccess()?'Save all files to a folder':'Download all files as one ZIP'}">${svg(folderAccess()?'folder':'arrow')} ${folderAccess()?'Save all<span class="queue-wide"> to folder</span>':'Download<span class="queue-wide"> all as</span> .zip'}</button>`:''}<button class="secondary" data-queue="save" data-job="${job.id}" aria-expanded="${job.outputs.length>1?String(!!job.open):'false'}">${job.outputs.length===1?`${svg('arrow')} Save`:job.open?`${svg('up')} Hide files`:`${svg('down')} Show files`}</button>`:'';
   return `<li class="queue-row ${job.state}">${symbol}<div class="queue-main"><span class="file-name">${name}</span><span class="queue-detail">${detail}</span></div>${action}</li>${job.open&&job.outputs&&job.outputs.length>1?`<li class="queue-row-files">${this.files(job)}</li>`:''}`;
  }
  private render(){

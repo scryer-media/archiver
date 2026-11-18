@@ -16,3 +16,4 @@ cargo rustc --locked --release --target wasm32-unknown-emscripten --bin archive-
 mkdir -p ../public/engine
 cp target/wasm32-unknown-emscripten/release/archive-engine.js ../public/engine/archive-engine.js
 cp target/wasm32-unknown-emscripten/release/archive_engine.wasm ../public/engine/archive_engine.wasm
+sh ../scripts/optimize-engine.sh ../public/engine/archive_engine.wasm
