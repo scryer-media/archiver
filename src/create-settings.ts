@@ -23,7 +23,9 @@ export class CreationSettings {
  private format='zip';
  private memory=256*1024*1024;
  constructor(private host:HTMLElement,private changed:()=>void,private locked:()=>boolean){}
- setContext(format:string,memory:number){this.format=format;this.memory=memory;this.render();}
+ private dictionary=8*1024*1024;
+ /** `dictionary` is the archive-wide LZMA dictionary ceiling; every LZMA and LZMA2 file uses it, so solid groups are not split by it. */
+ setContext(format:string,memory:number,dictionary=8*1024*1024){this.format=format;this.memory=memory;this.dictionary=dictionary;this.render();}
  setAdvanced(value:boolean){this.advanced=value;this.render();this.changed();}
  setFiles(files:File[]){
   this.abort?.abort();this.abort=new AbortController();const generation=++this.generation;
@@ -49,7 +51,7 @@ export class CreationSettings {
   if(bounds)result.level=plan.level??bounds[2];
   if(this.format==='7z'){
    result.filter=plan.codec==='copy'?'none':plan.filter||'none';
-   if(plan.codec==='lzma'||plan.codec==='lzma2')result.dictionarySize=Math.min(plan.dictionarySize||8*1024*1024,this.memory/32,8*1024*1024);
+   if(plan.codec==='lzma'||plan.codec==='lzma2')result.dictionarySize=Math.min(this.dictionary,this.memory/32,8*1024*1024);
    if(result.filter==='delta')result.deltaDistance=plan.deltaDistance||1;
   }
   return result;
@@ -71,7 +73,7 @@ export class CreationSettings {
   if(!['zip','7z'].includes(this.format)){const note=document.createElement('p');note.className='inspection-status';note.textContent='Compression applies to the entire archive or stream.';this.host.append(note);}
   else{
    const seven=this.format==='7z',table=document.createElement('table'),head=document.createElement('tr'),body=document.createElement('tbody');
-   for(const label of ['File','Compression','Level',...(seven?['Filter','Dictionary']:[])]){const cell=document.createElement('th');cell.scope='col';cell.textContent=label;head.append(cell);}
+   for(const label of ['File','Compression','Level',...(seven?['Filter']:[])]){const cell=document.createElement('th');cell.scope='col';cell.textContent=label;head.append(cell);}
    const unused=()=>{const cell=document.createElement('td');cell.className='not-applicable';cell.textContent='—';cell.title='Not used by this compression';return cell;};
    visible.forEach(index=>{
     const file=this.files[index],plan=this.effective(index),label=file.webkitRelativePath||file.name,row=document.createElement('tr');
@@ -79,7 +81,7 @@ export class CreationSettings {
     const select=(setting:string,choices:(string|number)[],text:(value:string)=>string,value:string|number,apply:(value:string)=>void)=>{const input=document.createElement('select');input.setAttribute('aria-label',setting+' for '+label);for(const choice of choices){const option=document.createElement('option');option.value=String(choice);option.textContent=text(String(choice));input.append(option);}input.value=String(value);input.addEventListener('change',()=>apply(input.value));return input;};
     const cell=(...inputs:HTMLElement[])=>{const td=document.createElement('td');td.append(...inputs);return td;};
     const name=document.createElement('th'),path=document.createElement('span'),type=document.createElement('small');name.scope='row';path.textContent=label;type.textContent=this.detections[index]?.label||'Detecting…';type.title=this.detections[index]?.reason||'';name.append(path,type);row.append(name);
-    row.append(cell(select('Compression',this.format==='zip'?['deflate','copy']:codecs,codec=>codecLabels[codec]||codec,plan.codec||'lzma2',codec=>commit({codec,level:undefined,dictionarySize:undefined}))));
+    row.append(cell(select('Compression',this.format==='zip'?['deflate','copy']:codecs,codec=>codecLabels[codec]||codec,plan.codec||'lzma2',codec=>commit({codec,level:undefined}))));
     const bounds=levels[plan.codec||''];
     row.append(bounds?cell(select('Level',Array.from({length:bounds[1]-bounds[0]+1},(_,at)=>bounds[0]+at),level=>level,plan.level??bounds[2],level=>commit({level:Number(level)}))):unused());
     if(seven){
@@ -89,7 +91,6 @@ export class CreationSettings {
       if(plan.filter==='delta')inputs.push(select('Delta distance',Array.from({length:256},(_,at)=>at+1),distance=>'Distance '+distance,plan.deltaDistance||1,distance=>commit({deltaDistance:Number(distance)})));
       row.append(cell(...inputs));
      }
-     row.append(plan.codec==='lzma'||plan.codec==='lzma2'?cell(select('Dictionary',[65536,262144,1048576,2097152,4194304,8388608].filter(size=>size<=this.memory/32),size=>Number(size)<1048576?Number(size)/1024+' KiB':Number(size)/1048576+' MiB',plan.dictionarySize??8388608,size=>commit({dictionarySize:Number(size)}))):unused());
     }
     body.append(row);
    });
