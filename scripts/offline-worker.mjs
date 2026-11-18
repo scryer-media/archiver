@@ -21,8 +21,9 @@ self.addEventListener('install',event=>event.waitUntil((async()=>{
   for(const asset of ASSETS)await cache.put(asset.path,await checked(asset));
   await cache.put(COMPLETE,new Response(CACHE));
  }catch(error){await caches.delete(CACHE);throw error;}
- // No skipWaiting: an active archive job keeps its existing worker/version.
+ // No automatic skipWaiting: the page asks for it once it has no work in progress.
 })()));
+self.addEventListener('message',event=>{if(event.data==='skip-waiting')self.skipWaiting();});
 self.addEventListener('activate',event=>event.waitUntil((async()=>{
  const keys=await caches.keys(),prior=await state(),others=keys.filter(key=>key.startsWith(PREFIX)&&key!==CACHE);
  // Legacy workers have no pointer: their activation kept the oldest surviving

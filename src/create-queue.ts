@@ -27,6 +27,7 @@ export class CreateQueue {
  private jobs:Job[]=[];private next=1;private active?:Job;private engine?:ArchiveEngine;private tracker=new ProgressTracker();private timer?:ReturnType<typeof setInterval>;private abortActive?:()=>void;
  constructor(private host:HTMLElement,private helpers:Helpers){host.addEventListener('click',event=>this.click(event));}
  get running(){return !!this.active;}
+ get empty(){return !this.jobs.length;}
  add(input:CreateJobInput){
   const name=['zip','7z','tar'].includes(input.format)||input.format.startsWith('tar.')?`${input.stem}.${input.format}`:input.format==='par2'?`${recoverySetName(input.files.map(file=>file.webkitRelativePath||file.name))??input.stem}.par2`:`${input.files[0]?.name}.${input.format}`;
   const job:Job={...input,id:this.next++,name,size:input.files.reduce((sum,file)=>sum+file.size,0),state:'queued'};

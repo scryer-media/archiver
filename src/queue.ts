@@ -27,6 +27,7 @@ export class ExtractionQueue {
  /** Redraws once the browser's capabilities are known, so the options shown match them. */
  refresh(){this.render();}
  get running(){return !!this.active||this.stopping;}
+ get empty(){return !this.jobs.length;}
  add(groups:ArchiveGroup[],password:string|undefined,format:string|undefined,options:ExtractionOptions,place:{destination?:FileSystemDirectoryHandle;delivery?:JobDelivery}={}){
   for(const group of groups)this.jobs.push({...group,...place,id:this.next++,password,format,options:{...options},state:'queued'});
   this.render();

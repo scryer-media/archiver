@@ -343,9 +343,15 @@ const installed=matchMedia('(display-mode: standalone)').matches||(navigator as 
 const ios=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1&&!/Android/.test(navigator.userAgent));
 const mobile=ios||matchMedia('(pointer: coarse)').matches;
 if(!installed&&mobile)setTimeout(()=>{if(!installed)showInstall(true);},ios?0:3000);
-const install=async()=>{const prompt=installPrompt;if(!prompt){notice(ios?'To install Archiver, tap the Share button, then Add to Home Screen. If your browser has no Add to Home Screen, such as Brave, open this page in Safari.':'To install Archiver, open your browser menu and choose Install app or Add to Home screen.');return;}installPrompt=undefined;showInstall(false);await prompt.prompt();};$('#install').onclick=install;$('#update-app').onclick=()=>{if(!busy&&!saving)notice('An update is downloaded. Save your results, close all app windows and tabs, then reopen the app to apply it. Active jobs keep their current version.');};
+const install=async()=>{const prompt=installPrompt;if(!prompt){notice(ios?'To install Archiver, tap the Share button, then Add to Home Screen. If your browser has no Add to Home Screen, such as Brave, open this page in Safari.':'To install Archiver, open your browser menu and choose Install app or Add to Home screen.');return;}installPrompt=undefined;showInstall(false);await prompt.prompt();};$('#install').onclick=install;// A new version waits until this page has nothing to lose, then takes over and reloads.
+// Pages with work in progress show the Update button instead and are never reloaded for another tab.
+const idle=()=>!busy&&!saving&&!queue.running&&!createQueue.running&&queue.empty&&createQueue.empty&&!files.length&&!outputs.length;
+let applying=false;
+if('serviceWorker' in navigator)navigator.serviceWorker.addEventListener('controllerchange',()=>{if(applying)location.reload();});
 if('serviceWorker' in navigator&&import.meta.env.PROD)navigator.serviceWorker.register('/sw.js').then(registration=>{
- const showUpdate=()=>{if(registration.waiting&&navigator.serviceWorker.controller)$('#update-app').hidden=false;};showUpdate();
+ const apply=()=>{if(!registration.waiting)return;applying=true;registration.waiting.postMessage('skip-waiting');};
+ $('#update-app').onclick=()=>{if(busy||saving||queue.running||createQueue.running)notice('The update applies when the current job finishes. Save your results first.');else apply();};
+ const showUpdate=()=>{if(!registration.waiting||!navigator.serviceWorker.controller)return;if(idle())apply();else $('#update-app').hidden=false;};showUpdate();
  registration.addEventListener('updatefound',()=>registration.installing?.addEventListener('statechange',showUpdate));
 }).catch(()=>{});
 
