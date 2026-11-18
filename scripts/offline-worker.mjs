@@ -4,15 +4,20 @@ const CACHE=${JSON.stringify(cache)}, ASSETS=${JSON.stringify(assets)};
 const PREFIX='scryer-archive-', STATE='archive-offline-active-v1', STATE_KEY='/__offline_active__', COMPLETE='/__offline_complete__';
 const STATIC=new Map(ASSETS.map(asset=>[asset.path,asset]));
 const hashed=path=>/^\/assets\/[^/]+-[\w-]{8,}\.(?:js|css)$/.test(path)||/^\/engine\/(?:archive-engine-|archive_engine-)[a-f0-9]{20}\.(?:js|wasm)$/.test(path);
+const CLOUDFLARE_SCRIPT=/<script>\(function\(\)\{function c\(\)\{[\s\S]*?__CF\$cv\$params[\s\S]*?<\/script>/g;
 async function state(){try{return await(await(await caches.open(STATE)).match(STATE_KEY)).json()}catch{return {}}}
 async function checked(asset){
  const path=asset.path==='/'?'/index.html':asset.path;
  const response=await fetch(new Request(new URL(path,self.location.origin),{cache:'reload',credentials:'same-origin'}));
  if(response.status!==200)throw new Error('Offline asset unavailable: '+asset.path);
- const bytes=await response.clone().arrayBuffer();
+ let bytes=await response.arrayBuffer();
+ // Cloudflare's bot detection injects a per-request script into HTML. The CSP blocks it, and it
+ // would never match the build hash, so it is removed before checking and caching.
+ if((response.headers.get('Content-Type')||'').includes('text/html'))bytes=await new Response((await new Response(bytes).text()).replace(CLOUDFLARE_SCRIPT,'')).arrayBuffer();
  const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),byte=>byte.toString(16).padStart(2,'0')).join('');
  if(digest!==asset.sha256)throw new Error('Offline asset version mismatch: '+asset.path);
- return response;
+ // A new response also drops the redirect flag (Pages sends /index.html to /), which page loads reject.
+ return new Response(bytes,{status:200,statusText:response.statusText,headers:response.headers});
 }
 self.addEventListener('install',event=>event.waitUntil((async()=>{
  const cache=await caches.open(CACHE),complete=await cache.match(COMPLETE);
