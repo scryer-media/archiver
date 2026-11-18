@@ -18,8 +18,8 @@ export function archiveStem(paths:string[]){
  if(paths.length===1&&!paths[0].includes('/'))return paths[0].replace(/\.[^.]+$/,'')||paths[0];
  return 'archive';
 }
-/** The engine names its output archive.*; recovery files and volumes follow the archive, so they take the same stem. */
-const renamed=(file:Output,stem:string)=>file.name.startsWith('archive.')?{...file,name:stem+file.name.slice('archive'.length)}:file;
+/** The engine names its output archive.* and its PAR2 files recovery.*; both take the archive's stem. */
+const renamed=(file:Output,stem:string)=>{const base=['archive.','recovery.'].find(prefix=>file.name.startsWith(prefix));return base?{...file,name:stem+file.name.slice(base.length-1)}:file;};
 
 /** Creates archives one after another, so the Create screen is free for the next one. An archive to download now runs next; a queued one waits its turn and is kept until downloaded. */
 export class CreateQueue {
@@ -73,7 +73,8 @@ export class CreateQueue {
   else if(action==='cancel-all')void this.cancelAll();
   else if(action==='clear')this.clearFinished();
  }
- private download(job:Job){for(const file of job.outputs!)this.helpers.save(file);job.downloaded=true;}
+ /** Browsers drop downloads fired in one burst, so each file waits a moment after the last. */
+ private download(job:Job){job.outputs!.forEach((file,index)=>setTimeout(()=>this.helpers.save(file),index*400));job.downloaded=true;}
  private async cancelActive(){
   const job=this.active,engine=this.engine;if(!job||!engine)return;
   job.state='cancelled';job.detail='Cancelled · partial output removed';this.engine=undefined;this.abortActive?.();this.render();
