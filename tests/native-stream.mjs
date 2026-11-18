@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import {gunzipSync,inflateSync} from 'node:zlib';
 import vm from 'node:vm';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 const code=ts.transpileModule(await readFile(new URL('../src/native-stream.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText;
 const planCode=ts.transpileModule(await readFile(new URL('../engine/create-plan.ts',import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ES2022}}).outputText;const plans=await import('data:text/javascript;base64,'+Buffer.from(planCode).toString('base64'));
 const native=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));

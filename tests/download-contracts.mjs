@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 const handlers={};
 const sandbox={ReadableStream,Response,URL,TextEncoder,TextDecoder,Map,Error,Number,String,encodeURIComponent,setTimeout:()=>1,clearTimeout(){},self:{location:{origin:'https://local.test'},addEventListener:(name,callback)=>handlers[name]=callback}};
 vm.runInNewContext(await readFile(new URL('../public/download-sw.js',import.meta.url),'utf8'),sandbox);

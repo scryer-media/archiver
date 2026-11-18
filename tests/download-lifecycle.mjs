@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 let registrations=0,port;
 const first={state:'activated',postMessage(data,ports){if(data.token){port=ports[1];port.postMessage({ready:true});}}};
 const second={...first};let active=first;

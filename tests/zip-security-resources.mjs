@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 import * as zip from '@zip.js/zip.js';
 zip.configure({useWebWorkers:false});
 const compile=async name=>ts.transpileModule(await readFile(new URL(name,import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;

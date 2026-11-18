@@ -2,7 +2,7 @@ import * as outputBudget from '../engine/output-budget.ts';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 import {creationPlans} from '../engine/create-plan.ts';
 let created=0,tickets=0,verified=0,repaired=0,listed=0;
 class Native {async create(){created++;return{files:[]}}async verify(){verified++;return{files:[],complete:true}}async repair(){repaired++;return{files:[],complete:true}}async list(){listed++;return{files:[],entries:[]}}}

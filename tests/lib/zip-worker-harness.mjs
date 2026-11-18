@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {resolve,dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {webcrypto} from 'node:crypto';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 import * as zip from '@zip.js/zip.js';
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'../..');
 const sourceCache=new Map();

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {mkdtemp,readFile,writeFile,mkdir,stat,rm,open} from 'node:fs/promises';
 import {join} from 'node:path';
 import vm from 'node:vm';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 import * as destination from '../engine/destination.ts';
 import * as zipStream from '../engine/zip-stream.ts';
 const root=await mkdtemp('/private/tmp/archive-destination-aliases-');let writerOpened=0,createdDirectories=0;

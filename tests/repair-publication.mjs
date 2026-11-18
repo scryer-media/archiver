@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 async function load(name){const exports={};vm.runInNewContext(ts.transpileModule(await readFile(new URL('../engine/'+name,import.meta.url),'utf8'),{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText,{exports,Uint8Array,Blob,Map,WeakMap,Set,Number,Math,Error,Promise});return exports;}
 const {publicationPolicy}=await load('publication.ts'),{DiskVolume}=await load('opfs.ts');
 const PAGE=512*1024;

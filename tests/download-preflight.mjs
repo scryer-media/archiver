@@ -2,7 +2,7 @@ import * as outputBudget from '../engine/output-budget.ts';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import vm from 'node:vm';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 import {creationPlans} from '../engine/create-plan.ts';
 import {selectEntries} from '../engine/selection.ts';
 let tickets=0,listed=0,entries=[];

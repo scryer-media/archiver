@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {webcrypto} from 'node:crypto';
 import {gzipSync,gunzipSync} from 'node:zlib';
-import ts from 'typescript';
+import ts from '@typescript/typescript6';
 const {default:createModule}=await import(new URL('../public/engine/archive-engine.js',import.meta.url));
 const module=await createModule({wasmBinary:await readFile(new URL('../public/engine/archive_engine.wasm',import.meta.url)),print(){},printErr(){}}),fs=module.FS;
 for(const path of ['/input','/out'])try{fs.mkdir(path);}catch{}
