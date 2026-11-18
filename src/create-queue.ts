@@ -33,7 +33,7 @@ export class CreateQueue {
   const waiting=input.delivery==='download'?this.jobs.findIndex(item=>item.state==='queued'&&item.delivery==='hold'):-1;
   if(waiting<0)this.jobs.push(job);else this.jobs.splice(waiting,0,job);
   this.render();if(!this.active)void this.loop();
-  return name;
+  return {name,id:job.id};
  }
  private async loop(){
   this.timer=setInterval(()=>this.renderActive(),1000);
@@ -61,6 +61,8 @@ export class CreateQueue {
   }
   if(this.timer)clearInterval(this.timer);this.timer=undefined;
  }
+ /** The row showing a job, for the hand-off animation from the Create screen. */
+ rowFor(id:number){return this.host.querySelector(`[data-row="${id}"]`);}
  private find(id:number){return this.jobs.find(job=>job.id===id);}
  private click(event:Event){
   const button=(event.target as Element).closest<HTMLButtonElement>('button[data-create]');if(!button||button.disabled)return;
@@ -93,7 +95,7 @@ export class CreateQueue {
   const symbol=job.state==='done'?`<span class="file-symbol ok">${svg('check')}</span>`:job.state==='failed'?`<span class="file-symbol failed">${svg('alert')}</span>`:job.state==='cancelled'?`<span class="file-symbol muted">${svg('close')}</span>`:`<span class="file-symbol">${svg('box')}</span>`;
   const detail=job.state==='queued'?`Waiting · ${job.files.length} ${job.files.length===1?'file':'files'} · ${size(job.size)}`:esc(job.detail||'');
   const action=job.state==='queued'?`<button class="queue-x" data-create="remove" data-job="${job.id}" aria-label="Remove ${name} from queue">${svg('close')}</button>`:job.outputs?.length?job.downloaded?`<button class="quiet" data-create="save" data-job="${job.id}">Download again ${svg('arrow')}</button>`:`<button class="primary" data-create="save" data-job="${job.id}">${svg('arrow')} Download</button>`:'';
-  return `<li class="queue-row ${job.state}">${symbol}<div class="queue-main"><span class="file-name">${name}</span><span class="queue-detail">${detail}</span></div>${action}</li>`;
+  return `<li class="queue-row ${job.state}" data-row="${job.id}">${symbol}<div class="queue-main"><span class="file-name">${name}</span><span class="queue-detail">${detail}</span></div>${action}</li>`;
  }
  private render(){
   this.host.hidden=!this.jobs.length;if(this.host.hidden)return;

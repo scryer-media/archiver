@@ -29,8 +29,8 @@ export function installIoProgress(module:any,op:string,files:File[],names:string
     if(!force&&phase===lastPhase&&performance.now()-last<250)return;
     last=performance.now();lastPhase=phase;
     if(extracting)send({phase,message:'Writing extracted bytes to browser storage',processedBytes:outputBytes,totalBytes:totals&&outputBytes<=totals.totalBytes?totals.totalBytes:undefined,unit:'output',outputBytes,filesProcessed:closed.size,totalFiles:totals?.totalFiles});
-    else if(inputComplete)send({phase,message:'Processing archive data',outputBytes});
-    else send({phase,message:'Reading input bytes',processedBytes:inputBytes,totalBytes:op==='create'?totalInput:undefined,unit:'input',outputBytes,filesProcessed:[...inputs].filter(([path,ranges])=>ranges.bytes===sizes.get(path)).length,totalFiles:op==='create'?files.length:undefined});
+    else if(inputComplete)send({phase,message:op==='create'?'Finishing the archive':'Processing archive data',outputBytes});
+    else send({phase,message:op==='create'?'Compressing':op==='extract'?'Reading the archive':'Reading files',processedBytes:inputBytes,totalBytes:op==='create'?totalInput:undefined,unit:'input',outputBytes,filesProcessed:[...inputs].filter(([path,ranges])=>ranges.bytes===sizes.get(path)).length,totalFiles:op==='create'?files.length:undefined});
   };
   const outputPath=(stream:any)=>{const path=stream.path as string;return path?.startsWith('/out/')&&!path.startsWith('/out/.work/')&&path!=='/out/.work'?path:undefined;};
   fs.read=(stream:any,buffer:any,offset:number,length:number,position?:number,...rest:any[])=>{

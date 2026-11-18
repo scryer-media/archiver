@@ -16,6 +16,7 @@ import { destinationPathRegistry } from '../engine/destination';
 import { generatePassword } from './password';
 import {CreationSettings} from './create-settings';
 import {ExtractionQueue} from './queue';
+import {captureFlight} from './fly';
 import {CreateQueue,archiveStem,type Delivery} from './create-queue';
 import {groupArchives,recoveryName} from './archive-groups';
 const icon = (name:string) => ({box:'<path d="m3 7 9-4 9 4-9 4-9-4Zm0 0v10l9 4 9-4V7M12 11v10"/>',arrow:'<path d="M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5"/>',file:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/>',plus:'<path d="M12 4v16M4 12h16"/>',shield:'<path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z"/><path d="m8 12 3 3 5-6"/>',folder:'<path d="M3 6h7l2 3h9v12H3Z"/>',check:'<path d="m5 12 4 4L19 6"/>',repair:'<path d="m14 6 4 4M3 21l11-11M14 3a6 6 0 0 0-4 8l-7 7a2 2 0 0 0 3 3l7-7a6 6 0 0 0 8-7l-4 4-4-4 4-4Z"/>',install:'<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 7.5v6M9.5 11l2.5 2.5 2.5-2.5M8 21h8"/>',chip:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>','no-upload':'<path d="M3 3l18 18M8.2 6.3A6 6 0 0 1 17.7 10H18a4 4 0 0 1 2.6 7M17 19H7a5 5 0 0 1-2.1-9.5"/>',lock:'<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',offline:'<path d="M3 3l18 18M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 3.4-2.1M2 8.8a15 15 0 0 1 4.3-2.6M13.6 7.1A15 15 0 0 1 22 8.8M12 20h.01"/>',external:'<path d="M7 17 17 7M8 7h9v9"/>',close:'<path d="M6 6l12 12M18 6 6 18"/>',alert:'<path d="M12 8v5M12 16.5h.01"/><circle cx="12" cy="12" r="9"/>',queue:'<path d="M4 6h16M4 12h16M4 18h10"/>'}[name] || '') ;
@@ -155,8 +156,9 @@ async function queueCreate(delivery:Delivery){
  catch(error){notice(error instanceof Error?error.message:String(error),true);return;}
  finally{busy=false;lockControls(false);($('#run') as HTMLButtonElement).disabled=false;$('#run').innerHTML=label;}
  const format=($('#format') as HTMLSelectElement).value,stem=archiveStem([...files.map(file=>file.webkitRelativePath||file.name),...directories]);
- const name=createQueue.add({stem,format,files:[...files],options:createOptions(),stream:decision.stream,delivery});
- setMode('create');notice(delivery==='hold'?`${name} is queued. Download it from the queue when it’s done.`:`Creating ${name}. It goes to your browser’s Downloads.`);$('#notice').classList.add('screen-reader-only');
+ const flight=captureFlight([...document.querySelectorAll('#file-list:not([hidden]) .file-row, #file-settings:not([hidden]) tbody tr')]);
+ const {name,id}=createQueue.add({stem,format,files:[...files],options:createOptions(),stream:decision.stream,delivery});
+ setMode('create');flight(()=>createQueue.rowFor(id));notice(delivery==='hold'?`${name} is queued. Download it from the queue when it’s done.`:`Creating ${name}. It goes to your browser’s Downloads.`);$('#notice').classList.add('screen-reader-only');
 }
 /** An archive already opened on screen goes to the extraction queue, so it keeps running in its own engine beside creates and other tabs. */
 async function queueExtract(toFolder:boolean){
