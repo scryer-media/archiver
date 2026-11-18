@@ -1,4 +1,4 @@
-import {WriteBudget,outputLimit} from './output-budget';
+import {WriteBudget,outputLimit,markOutputLimited} from './output-budget';
 import { acquireStorageLease, cleanAbandonedStorage, removeStorage, type StorageLease } from './storage';
 export interface EntryMetadata { modifiedTime?: number; createdTime?: number; changedTime?: number; accessedTime?: number; unixMode?: number; windowsAttributes?: number; uid?: number; gid?: number; owner?: string; group?: string; link?: { kind: 'symbolic' | 'hard' | 'copy' | 'unknown' | 'junction'; target?: string; targetIsDirectory?: boolean }; sparse?: { logicalSize: number; extents: { offset: number; length: number }[] } }
 export interface ArchiveEntry { name: string; size: number; isDirectory: boolean; isLink?: boolean; metadata?: EntryMetadata }
@@ -61,8 +61,8 @@ export class ArchiveEngine {
         worker.onmessage = ({ data }) => {
           if(generation!==this.generation||finished)return;
           if(data.progress){this.onProgress?.(data.progress);return;}
-          try{if(!budgetRecorded){budget.record(data.writeBudgetUsed,grant);budgetRecorded=true;}}catch(error){finish(error as Error);return;}
-          if(data.error)finish(new Error(data.error));else if(deliveryDone)void deliveryDone.then(()=>finish(undefined,data),error=>finish(error));else finish(undefined,data);
+          try{if(!budgetRecorded){budget.record(data.writeBudgetUsed,grant);budgetRecorded=true;}}catch(error){finish(error===budget.failure?markOutputLimited(error as Error):error as Error);return;}
+          if(data.error)finish(data.outputLimited===true?markOutputLimited(new Error(data.error)):new Error(data.error));else if(deliveryDone)void deliveryDone.then(()=>finish(undefined,data),error=>finish(error));else finish(undefined,data);
         };
         worker.onerror = event => finish(new Error(event.message || 'Archive worker failed'));
         worker.onmessageerror = () => finish(new Error('Archive worker response could not be decoded'));

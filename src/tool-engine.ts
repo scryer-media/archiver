@@ -1,4 +1,4 @@
-import {WriteBudget} from '../engine/output-budget';
+import {WriteBudget,markOutputLimited} from '../engine/output-budget';
 import {chooseNativeStream} from './native-stream';
 import {creationPlans} from '../engine/create-plan';
 import { createDownload, type DownloadJob } from '../engine/download';
@@ -41,7 +41,7 @@ export class ArchiveEngine {
           if (error) { this.pendingCleanup.push(removeStorage(lease)); this.leases = this.leases.filter(item => item !== lease); reject(error); }
           else resolve(result!);
         };
-        worker.onmessage = ({ data }) => { if(generation!==this.generation)return;if (data.progress) { this.emitProgress(data.progress); return; }try{budget.record(data.writeBudgetUsed,grant);}catch(error){finish(error as Error);return;} finish(data.error ? Object.assign(new Error(data.error),{nativeCodecError:data.nativeCodecError===true}) : undefined, data); };
+        worker.onmessage = ({ data }) => { if(generation!==this.generation)return;if (data.progress) { this.emitProgress(data.progress); return; }try{budget.record(data.writeBudgetUsed,grant);}catch(error){finish(error===budget.failure?markOutputLimited(error as Error):error as Error);return;} finish(data.error ? Object.assign(new Error(data.error),{nativeCodecError:data.nativeCodecError===true},data.outputLimited===true?{outputLimited:true}:{}) : undefined, data); };
         worker.onerror = event => finish(new Error(event.message || 'Archive worker failed'));
         worker.onmessageerror = () => finish(new Error('Archive worker response could not be decoded'));
         worker.postMessage({ writeBudgetGrant:grant,outputLimitBytes:budget.limit,op, files, names: files.map(file => file.webkitRelativePath || file.name), password, format, directories, outputDirectory, downloadStream, extraction, creation:creation?{fileOptions:creation.fileOptions,codec:creation.codec,filter:creation.filter,level:creation.level,dictionarySize:creation.dictionarySize,deltaDistance:creation.deltaDistance,encryptHeaders:creation.encryptHeaders}:undefined, storageId: lease.name },downloadStream?[downloadStream]:[]);
@@ -55,13 +55,14 @@ export class ArchiveEngine {
     const epoch = this.cancellationEpoch;
     try { const result=await action();return {...result,writeBudgetUsed:budget.used,writeBudgetLimit:budget.limit}; } finally { if (epoch === this.cancellationEpoch) {this.busy = false;this.stage='';this.currentBudget=undefined;} }
   }
-  /** Whether a streamed download can deliver this archive: a raw compressed stream, or an archive holding exactly one regular file. */
-  streamable(files: File[], password?: string, format?: string, options:ExtractionOptions={}) {
+  /** Looks at an archive before extraction: whether a streamed download can deliver it (a raw compressed stream, or exactly one regular file), and its expanded size when the archive lists one. */
+  inspect(files: File[], password?: string, format?: string, options:ExtractionOptions={}) {
     return this.exclusive(async () => {
-      if(this.isTarStream(files))return {complete:true,files:[],streamable:false};
-      if(files.length===1&&(/\.(gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib)$/i.test(files[0].name)||!!format&&['gz','zstd','br','xz','bz2','lzma','lz4','deflate','zlib'].includes(format)))return {complete:true,files:[],streamable:true};
+      if(this.isTarStream(files))return {complete:true,files:[],streamable:false,totalBytes:undefined as number|undefined};
+      if(files.length===1&&(/\.(gz|zst|zstd|br|xz|bz2|bzip2|lzma|lz4|deflate|zlib)$/i.test(files[0].name)||!!format&&['gz','zstd','br','xz','bz2','lzma','lz4','deflate','zlib'].includes(format)))return {complete:true,files:[],streamable:true,totalBytes:undefined as number|undefined};
       const members=(await this.listInternal(files,password,format,options)).entries?.filter(entry=>!entry.isDirectory);
-      return {complete:true,files:[],streamable:members?.length===1&&(!members[0].isLink||options.links==='copy-safe')};
+      const total=members?.reduce((sum,entry)=>sum+entry.size,0);
+      return {complete:true,files:[],streamable:members?.length===1&&(!members[0].isLink||options.links==='copy-safe'),totalBytes:members?.every(entry=>Number.isSafeInteger(entry.size)&&entry.size>=0)&&Number.isSafeInteger(total)?total:undefined};
     },options.outputLimitBytes);
   }
   list(files: File[], password?: string, format?: string, options:ExtractionOptions={}) { return this.exclusive(() => this.listInternal(files, password, format,options),options.outputLimitBytes); }

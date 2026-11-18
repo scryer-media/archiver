@@ -128,7 +128,7 @@ self.onmessage = async ({ data }) => {
   } catch (error) {
     try { direct?.close(); } catch {}
     try { volume?.close(); } catch {}
-    self.postMessage({ writeBudgetUsed:budget?.used??0, error: budget?.failure?.message??(error instanceof Error ? error.message : String(error)) });
+    self.postMessage({ writeBudgetUsed:budget?.used??0, outputLimited:!!budget?.failure, error: budget?.failure?.message??(error instanceof Error ? error.message : String(error)) });
   }
 };
 export {};

@@ -5,6 +5,9 @@ export function outputLimit(value: number | undefined): number {
   if (!Number.isSafeInteger(limit) || limit <= 0) throw new Error('Write budget must be a positive, finite whole number of bytes');
   return limit;
 }
+/** Marks an error as "the write budget ran out", so callers can tell it apart without reading the message. */
+export function markOutputLimited<T>(error:T):T{if(error&&typeof error==='object')Object.assign(error,{outputLimited:true});return error;}
+export function isOutputLimited(error:unknown):boolean{return !!error&&typeof error==='object'&&(error as {outputLimited?:unknown}).outputLimited===true;}
 export class WriteBudget {
   readonly limit: number;
   used = 0;
