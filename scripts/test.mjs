@@ -3,7 +3,7 @@ import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const tests=[
- 'input-read-window','output-budget','output-budget-worker','production-csp','password','delivery-model','progress-model','create-file-options','creation-policy',
+ 'input-read-window','output-budget','output-budget-worker','production-csp','password','archive-groups','delivery-model','progress-model','create-file-options','creation-policy',
  'download-contracts','download-preflight','download-lifecycle','download-native-bridge',
  'native-stream','offline-cache-contracts','repair-publication','zip-security',
  'zip-security-aes','zip-security-resources','zip-links','destination-filesystem-aliases',
