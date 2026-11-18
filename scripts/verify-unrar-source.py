@@ -59,7 +59,7 @@ def main():
         result = verify(args.engine_manifest, ROOT / 'engine/unrar-source')
     except (OSError, ValueError, KeyError, TypeError) as error:
         print('RAR source preflight failed: ' + str(error), file=sys.stderr)
-        print('Prepare the exact adjacent checkout using engine/unrar-source/README.md; no source was modified.', file=sys.stderr)
+        print('Prepare the exact adjacent unrar-rs checkout recorded in engine/unrar-source; no source was modified.', file=sys.stderr)
         return 1
     if args.cargo:
         for path in [result['engineManifest'], result['crate'], *result['files']]:

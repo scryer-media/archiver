@@ -8,7 +8,7 @@ Use Node.js 22.18 or newer (including a supported current LTS release). Install 
 
 Run `npm run check` for strict TypeScript checking plus the bounded Node component/security suite, or `npm test` for that suite alone. It starts no browser or server and does not run native builds or multi-gigabyte fixtures. Full native and explicit browser integration commands remain separate.
 
-The [native engine source and exact bootstrap instructions](engine/README.md) live in `engine/`. Its generated runtime must exist in `public/engine/` before a production build. ZIP can run independently; TAR uses the native libarchive runtime.
+The native engine source lives in `engine/`. Its generated runtime must exist in `public/engine/` before a production build. ZIP can run independently; TAR uses the native libarchive runtime.
 
 ## Capabilities
 
@@ -63,7 +63,7 @@ Cancel terminates the operation worker and waits for bounded cleanup retries whi
 
 ## Privacy and offline use
 
-Production hosts must apply the same-origin CSP and isolation headers as actual HTTP response headers. Local production preview uses the same policy; development HMR remains separate. See [the hosting contract and verification commands](HOSTING.md), including Cloudflare Pages and custom-server requirements. CSP restricts external connections and script sources; it is defense in depth, not a substitute for dependency or archive validation.
+Production hosts must apply the same-origin CSP and isolation headers as actual HTTP response headers. Local production preview uses the same policy; development HMR remains separate. The headers are in `public/_headers`. CSP restricts external connections and script sources; it is defense in depth, not a substitute for dependency or archive validation.
 
 The production service worker precaches the full build, including engine assets, after its first successful installation. It checks asset SHA-256 values before installation, bypasses stale HTTP-cache responses, and retains the current plus one previous active asset cohort within this app's cache namespaces. Installation needs HTTPS or localhost and browser PWA support. The app works offline once installation completes; development mode does not install the offline app-shell worker. The separate streamed-download worker is available in development and production. Navigations use the active version’s cached shell, keeping its UI, workers and native runtime consistent. Updates precache a complete asset set and display Update downloaded, then wait for all app tabs and windows to close before activation. Save results, close the app and reopen to apply the downloaded version. Active jobs keep their current version. Retaining the previous active cohort also lets in-flight older pages load their content-hashed modules during an update.
 
