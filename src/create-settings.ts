@@ -38,12 +38,12 @@ export class CreationSettings {
  setContext(format:string,memory:number,dictionary=8*1024*1024){this.format=format;this.memory=memory;this.dictionary=dictionary;this.render();}
  setEffort(value:'standard'|'max'){this.effort=value;this.render();this.changed();}
  setAdvanced(value:boolean){this.advanced=value;this.render();this.changed();}
- /** Advanced "Skip useless files": system and sync-client leftovers start out skipped. */
- skipUseless=false;
+ /** "Skip useless files": system and sync-client leftovers start out skipped. Simple mode always skips them; Advanced has the checkbox. */
+ skipUseless=true;
  private dropped=new Set<string>();
  private kept=new Set<string>();
  setSkipUseless(value:boolean){this.skipUseless=value;this.render();this.changed();}
- private uselessActive(){return this.advanced&&this.skipUseless;}
+ private uselessActive(){return !this.advanced||this.skipUseless;}
  /** Why `file` stays out of the archive, or undefined when it goes in. */
  skipReason(file:File){const name=logical(file);if(this.kept.has(name))return undefined;if(this.dropped.has(name))return 'Skipped';return this.uselessActive()?uselessFile(name)?.what:undefined;}
  toggleSkip(file:File){const name=logical(file);if(this.skipReason(file)){if(!this.dropped.delete(name))this.kept.add(name);}else{this.kept.delete(name);this.dropped.add(name);}this.render();this.changed();}
@@ -62,7 +62,7 @@ export class CreationSettings {
  private status(){return this.inspecting?'Inspecting files · '+this.completed+' / '+this.files.length:this.skipped?'Inspection skipped · using general defaults':'File settings';}
  cancelInspection(){if(!this.inspecting)return;this.abort?.abort();this.detections=this.files.map(file=>unknownDetection(file.webkitRelativePath||file.name,'Inspection skipped; using general defaults.'));this.inspecting=false;this.skipped=true;this.pending=Promise.resolve();this.render();}
  ready(){return this.pending;}
- reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.dropped.clear();this.kept.clear();this.skipUseless=false;this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
+ reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.dropped.clear();this.kept.clear();this.skipUseless=true;this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
  private recommendation(index:number):FileCreateOptions{
   const name=this.files[index].webkitRelativePath||this.files[index].name;
   const detection=this.detections[index];
