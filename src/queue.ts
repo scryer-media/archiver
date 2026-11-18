@@ -3,14 +3,14 @@ import {ArchiveEngine} from './tool-engine';
 import {ProgressTracker,duration,type ProgressSample} from './progress';
 import {recoveryName,type ArchiveGroup} from './archive-groups';
 
-type JobState='queued'|'active'|'done'|'failed'|'cancelled';
+type JobState='queued'|'active'|'needs-folder'|'done'|'failed'|'cancelled';
 type Output={name:string;blob:Blob};
 interface Job extends ArchiveGroup {id:number;password?:string;format?:string;options:ExtractionOptions;state:JobState;detail?:string;outputs?:Output[];engine?:ArchiveEngine;open?:boolean;shown?:number;streamed?:boolean}
 interface Helpers {svg:(name:string)=>string;esc:(text:string)=>string;size:(bytes:number)=>string;canStart:()=>boolean;notice:(message:string,error?:boolean)=>void;addArchives:()=>void;save:(file:Output)=>void;streaming:()=>boolean}
 const folderAccess=()=>'showDirectoryPicker' in window;
 const PAGE=200;
 
-/** Extracts archive sets one after another: into one chosen folder when the browser allows it. Otherwise a single-file archive streams straight to Downloads, and the rest are kept in this tab for saving per job. */
+/** Extracts archive sets one after another. With a chosen folder everything goes there. Without one, an archive holding one file goes to Downloads, and one holding several waits for a folder (or, where the browser has no folder access, is kept in this tab for saving file by file). */
 export class ExtractionQueue {
  private jobs:Job[]=[];private next=1;private engine?:ArchiveEngine;private active?:Job;private destination?:FileSystemDirectoryHandle;
  private tracker=new ProgressTracker();private timer?:ReturnType<typeof setInterval>;private started=0;private finishedAt=0;private stopping=false;private abortActive?:()=>void;
@@ -26,7 +26,7 @@ export class ExtractionQueue {
   const action=button.dataset.queue,job=this.find(Number(button.dataset.job));
   if(action==='start')void this.start();
   else if(action==='add')this.helpers.addArchives();
-  else if(action==='folder')void this.chooseFolder();
+  else if(action==='folder')void this.chooseFolder().then(chosen=>{if(chosen)this.resume();});
   else if(action==='cancel-all')void this.cancelAll();
   else if(action==='clear')this.clearFinished();
   else if(action==='remove'&&job?.state==='queued'){this.jobs=this.jobs.filter(item=>item!==job);this.render();}
@@ -36,13 +36,13 @@ export class ExtractionQueue {
   else if(action==='file'&&job?.outputs){const file=job.outputs[Number(button.dataset.index)];if(file)this.helpers.save(file);}
  }
  private async chooseFolder(){
-  try{this.destination=await (window as any).showDirectoryPicker({mode:'readwrite'});this.render();return true;}
+  try{this.destination=await (window as any).showDirectoryPicker({mode:'readwrite'});for(const job of this.jobs)if(job.state==='needs-folder'){job.state='queued';job.detail=undefined;}this.render();return true;}
   catch(error){if((error as Error).name!=='AbortError')this.helpers.notice((error as Error).message,true);return false;}
  }
+ private resume(){if(!this.running&&this.started&&this.jobs.some(job=>job.state==='queued'))void this.start();}
  async start(){
   if(this.running||!this.jobs.some(job=>job.state==='queued'))return;
   if(!this.helpers.canStart()){this.helpers.notice('Finish the current operation before starting the queue.',true);return;}
-  if(folderAccess()&&!this.destination&&!await this.chooseFolder())return;
   this.started=performance.now();this.finishedAt=0;
   this.timer=setInterval(()=>this.renderActive(),1000);
   void this.loop();
@@ -55,8 +55,11 @@ export class ExtractionQueue {
     const inputs=job.files.filter(file=>!recoveryName(file.name));
     // Dispose does not settle every native call, so cancellation also releases the loop directly.
     const cancelled=new Promise<never>((_resolve,reject)=>{this.abortActive=()=>reject(new Error('Cancelled'));});
-    // Without a folder, an archive holding one file streams straight to Downloads instead of being prepared in the tab.
-    const stream=!this.destination&&this.helpers.streaming()&&(await Promise.race([engine.streamable(inputs,job.password,job.format,job.options),cancelled])).streamable;
+    // Without a folder, an archive holding one file goes to Downloads; one holding several needs a folder first.
+    const single=!this.destination&&(await Promise.race([engine.streamable(inputs,job.password,job.format,job.options),cancelled])).streamable;
+    const stream=single&&this.helpers.streaming();
+    if(!this.destination&&!single&&folderAccess()){job.state='needs-folder';job.detail='Holds several files. Choose a folder to extract it into.';}
+    else{
     job.streamed=stream;
     const result=await Promise.race([engine.extract(inputs,job.password,job.format,this.destination,stream?'download':undefined,job.options),cancelled]);
     if(job.state==='active'){
@@ -64,7 +67,8 @@ export class ExtractionQueue {
      job.state=result.complete===false?'failed':'done';
      job.detail=result.complete===false?(result.message||'Incomplete'):`${stream?'Sent to Downloads':`${count} ${count===1?'file':'files'}`} · ${duration(this.tracker.view(performance.now()).elapsedSeconds)}`;
      // In-tab results live in the engine's storage, so that engine stays alive until the job is cleared.
-     if(!this.destination&&!stream&&job.state==='done'){job.outputs=result.files;job.engine=engine;}
+     if(!this.destination&&!stream&&job.state==='done'){job.outputs=result.files;job.engine=engine;if(single&&result.files.length===1){this.helpers.save(result.files[0]);job.detail=`Sent to Downloads · ${duration(this.tracker.view(performance.now()).elapsedSeconds)}`;}else job.detail+=' · this browser can’t save to a folder, so save them below';}
+    }
     }
    }catch(error){if(job.state==='active'){job.state='failed';job.detail=error instanceof Error?error.message:String(error);}}
    finally{this.abortActive=undefined;if(this.engine===engine){this.engine=undefined;if(job.engine!==engine)void engine.dispose();}this.active=undefined;}
@@ -80,13 +84,13 @@ export class ExtractionQueue {
   this.render();
  }
  private async cancelAll(){
-  for(const job of this.jobs)if(job.state==='queued'){job.state='cancelled';job.detail='Cancelled';}
+  for(const job of this.jobs)if(job.state==='queued'||job.state==='needs-folder'){job.state='cancelled';job.detail='Cancelled';}
   if(this.active){this.stopping=true;await this.cancelActive();}
   this.render();
  }
  private clearFinished(){
   for(const job of this.jobs)if(job.engine&&job.state!=='queued'&&job.state!=='active'){void job.engine.dispose();job.engine=undefined;job.outputs=undefined;}
-  this.jobs=this.jobs.filter(job=>job.state==='queued'||job.state==='active');this.render();
+  this.jobs=this.jobs.filter(job=>job.state==='queued'||job.state==='active'||job.state==='needs-folder');this.render();
  }
  private meta(job:Job){const {size}=this.helpers;const parts=[size(job.size)];if(job.volumes>1)parts.push(`${job.volumes} parts`);if(job.recovery)parts.push(`${job.recovery} recovery`);return parts.join(' · ');}
  private files(job:Job){
@@ -98,18 +102,18 @@ export class ExtractionQueue {
  private row(job:Job){
   const {svg,esc}=this.helpers,name=esc(job.name);
   if(job.state==='active')return `<li class="queue-row active" data-row="${job.id}"><span class="file-symbol">${svg('box')}</span><div class="queue-main"><div class="queue-line"><span class="file-name">${name}</span><span class="queue-percent" data-field="percent"></span></div><progress max="100" aria-label="Progress for ${name}"></progress><div class="queue-line queue-stats"><span data-field="bytes"></span><span data-field="files"></span><span data-field="rate"></span><span data-field="eta"></span></div></div><button class="queue-x" data-queue="cancel" data-job="${job.id}" aria-label="Cancel ${name}">${svg('close')}</button></li>`;
-  const symbol=job.state==='done'?`<span class="file-symbol ok">${svg('check')}</span>`:job.state==='failed'?`<span class="file-symbol failed">${svg('alert')}</span>`:job.state==='cancelled'?`<span class="file-symbol muted">${svg('close')}</span>`:`<span class="file-symbol">${svg('box')}</span>`;
+  const symbol=job.state==='needs-folder'?`<span class="file-symbol muted">${svg('folder')}</span>`:job.state==='done'?`<span class="file-symbol ok">${svg('check')}</span>`:job.state==='failed'?`<span class="file-symbol failed">${svg('alert')}</span>`:job.state==='cancelled'?`<span class="file-symbol muted">${svg('close')}</span>`:`<span class="file-symbol">${svg('box')}</span>`;
   const detail=job.state==='queued'?this.meta(job):esc(job.detail||'');
-  const action=job.state==='queued'?`<button class="queue-x" data-queue="remove" data-job="${job.id}" aria-label="Remove ${name} from queue">${svg('close')}</button>`:job.outputs?.length?`<button class="quiet" data-queue="save" data-job="${job.id}" aria-expanded="${job.outputs.length>1?String(!!job.open):'false'}">${job.outputs.length===1?`Save ${svg('arrow')}`:job.open?'Hide files':'Show files'}</button>`:'';
+  const action=job.state==='needs-folder'?`<button class="secondary" data-queue="folder" data-job="${job.id}">${svg('folder')} Choose folder</button>`:job.state==='queued'?`<button class="queue-x" data-queue="remove" data-job="${job.id}" aria-label="Remove ${name} from queue">${svg('close')}</button>`:job.outputs?.length?`<button class="quiet" data-queue="save" data-job="${job.id}" aria-expanded="${job.outputs.length>1?String(!!job.open):'false'}">${job.outputs.length===1?`Save ${svg('arrow')}`:job.open?'Hide files':'Show files'}</button>`:'';
   return `<li class="queue-row ${job.state}">${symbol}<div class="queue-main"><span class="file-name">${name}</span><span class="queue-detail">${detail}</span></div>${action}</li>${job.open&&job.outputs&&job.outputs.length>1?`<li class="queue-row-files">${this.files(job)}</li>`:''}`;
  }
  private render(){
   const {svg,esc,size}=this.helpers;
   this.host.hidden=!this.jobs.length;if(!this.jobs.length)return;
   const done=this.jobs.filter(job=>job.state==='done').length,counted=this.jobs.filter(job=>job.state!=='cancelled').length,queued=this.jobs.some(job=>job.state==='queued'),finished=this.jobs.some(job=>job.state==='done'||job.state==='failed'||job.state==='cancelled');
-  const remaining=this.jobs.filter(job=>job.state==='queued'||job.state==='active').reduce((sum,job)=>sum+job.size,0);
-  const start=!this.running&&queued?`<button class="primary" data-queue="start">${folderAccess()?`${svg('folder')} ${this.destination?'Start queue':'Choose folder & start'}`:`${svg('arrow')} Start queue`}</button>`:'';
-  const place=this.destination?`${svg('folder')} ${esc(this.destination.name)}${!this.running?' <button class="quiet" data-queue="folder">Change</button>':''}`:folderAccess()?`${svg('folder')} No folder chosen`:this.helpers.streaming()?`${svg('arrow')} Single files stream to Downloads; others wait here to be saved`:`${svg('box')} Kept in this tab until saved`;
+  const remaining=this.jobs.filter(job=>job.state==='queued'||job.state==='active'||job.state==='needs-folder').reduce((sum,job)=>sum+job.size,0);
+  const start=!this.running&&queued?`<button class="primary" data-queue="start">${svg('arrow')} Start queue</button>`:'';
+  const place=this.destination?`${svg('folder')} ${esc(this.destination.name)}${!this.running?' <button class="quiet" data-queue="folder">Change</button>':''}`:folderAccess()?`${svg('folder')} No folder chosen · single files go to Downloads <button class="quiet" data-queue="folder">Choose folder</button>`:`${svg('arrow')} Single files go to Downloads; others wait here to be saved`;
   this.host.innerHTML=`<div class="queue-head"><div><h2>Queue</h2><span class="queue-count">${done} of ${counted} done</span></div><div class="queue-actions">${this.running?'<button class="quiet" data-queue="cancel-all">Cancel all</button>':finished?'<button class="quiet" data-queue="clear">Clear finished</button>':''}<button class="quiet" data-queue="add">${svg('plus')} Add archives</button>${start}</div></div><ol class="queue-list">${this.jobs.map(job=>this.row(job)).join('')}</ol><div class="queue-foot"><span class="queue-folder">${place}</span><dl><div><dt>Remaining</dt><dd>${size(remaining)}</dd></div><div><dt>Elapsed</dt><dd data-field="elapsed">${this.started?duration(((this.finishedAt||performance.now())-this.started)/1000):'—'}</dd></div></dl></div>`;
   this.renderActive();
  }
