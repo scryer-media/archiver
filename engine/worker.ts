@@ -86,7 +86,8 @@ self.onmessage = async ({ data }) => {
     const inputBytes = files.reduce((total: number, file: File) => total + file.size, 0);
     if (!volume && !direct && ['repair', 'create'].includes(op) && inputBytes > MEMORY_LIMIT) throw new Error('Large repairs and creation require browser disk storage. This browser only supports the 128 MB memory fallback.');
     self.postMessage({ progress: { phase: op, message: options.downloadBridge?'Sending bytes to browser download':direct ? 'Streaming directly to selected folder' : volume ? 'Processing with private disk storage; originals stay unchanged' : 'Processing with bounded browser memory' } });
-    const inputMetadata = op === 'create' ? files.map((file: File,index: number) => ({ name: names[index], ...(Number.isSafeInteger(file.lastModified) ? { modifiedTime: file.lastModified } : {}) })) : undefined;
+    // Limited metadata: with no input times, 7z entries carry none and TAR entries get the Unix epoch.
+    const inputMetadata = op === 'create' && !options.limitedMetadata ? files.map((file: File,index: number) => ({ name: names[index], ...(Number.isSafeInteger(file.lastModified) ? { modifiedTime: file.lastModified } : {}) })) : undefined;
     const request = { ...options, inputMetadata, op, paths: names.map(name => '/input/' + name), password: password ?? '', solid: solid ?? false, maxOutput: op==='list'?Number.MAX_SAFE_INTEGER:Math.min(budget.remaining,direct?budget.limit:volume?.quota??MEMORY_LIMIT) };
     const telemetry=installIoProgress(module,op,files,names,progress=>self.postMessage({progress:{...progress,inputReads:{...inputReads}}}),!!direct,totals);
     const result=runEngine(request);

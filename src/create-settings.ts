@@ -2,6 +2,8 @@ import {svg} from './icons';
 import {sniffFiles,recommendForFormat,type Detection} from './sniffer';
 import {unknownDetection} from './sniffer/model';
 import type {FileCreateOptions} from '../engine/client';
+import {uselessFile} from '../engine/skip-files';
+const logical=(file:File)=>file.webkitRelativePath||file.name;
 type Format = 'zip'|'7z';
 const codecs=['lzma2','lzma','ppmd','bzip2','zstd','deflate','lz4','brotli','copy'];
 const filters=['none','delta','x86','arm','arm64','thumb','ia64','sparc','ppc','riscv','bcj2'];
@@ -9,6 +11,9 @@ const codecLabels:Record<string,string>={lzma2:'LZMA2',lzma:'LZMA',ppmd:'PPMd',b
 // Branch and Delta filters prepare data for LZMA-family coders; 7-Zip pairs them with nothing else.
 const usesFilter=(codec?:string)=>codec==='lzma'||codec==='lzma2';
 const filterLabels:Record<string,string>={none:'None',delta:'Delta',x86:'x86',arm:'ARM',arm64:'ARM64',thumb:'ARM Thumb',ia64:'IA-64',sparc:'SPARC',ppc:'PowerPC',riscv:'RISC-V',bcj2:'BCJ2'};
+/** The overview's per-file toggle: skip a file that goes in, or put a skipped one back. */
+export function skipMarkup(label:string,skipped:boolean){return {className:'icon skip-toggle'+(skipped?' active':''),label:(skipped?'Include ':'Skip ')+label,title:skipped?'Include':'Skip',icon:svg(skipped?'plus':'skip')};}
+function skipButton(label:string,skipped:boolean,toggle:()=>void,index:number){const button=document.createElement('button'),markup=skipMarkup(label,skipped);button.type='button';button.dataset.skipIndex=String(index);button.className=markup.className;button.setAttribute('aria-label',markup.label);button.setAttribute('aria-pressed',String(skipped));button.title=markup.title;button.innerHTML=markup.icon;button.onclick=toggle;return button;}
 const levels:Record<string,[number,number,number]>={lzma2:[0,9,3],lzma:[0,9,3],ppmd:[0,9,6],bzip2:[1,9,5],zstd:[1,22,3],deflate:[0,9,6],brotli:[0,11,5]};
 export class CreationSettings {
  advanced=false;
@@ -33,10 +38,22 @@ export class CreationSettings {
  setContext(format:string,memory:number,dictionary=8*1024*1024){this.format=format;this.memory=memory;this.dictionary=dictionary;this.render();}
  setEffort(value:'standard'|'max'){this.effort=value;this.render();this.changed();}
  setAdvanced(value:boolean){this.advanced=value;this.render();this.changed();}
+ /** Advanced "Skip useless files": system and sync-client leftovers start out skipped. */
+ skipUseless=false;
+ private dropped=new Set<string>();
+ private kept=new Set<string>();
+ setSkipUseless(value:boolean){this.skipUseless=value;this.render();this.changed();}
+ private uselessActive(){return this.advanced&&this.skipUseless;}
+ /** Why `file` stays out of the archive, or undefined when it goes in. */
+ skipReason(file:File){const name=logical(file);if(this.kept.has(name))return undefined;if(this.dropped.has(name))return 'Skipped';return this.uselessActive()?uselessFile(name)?.what:undefined;}
+ toggleSkip(file:File){const name=logical(file);if(this.skipReason(file)){if(!this.dropped.delete(name))this.kept.add(name);}else{this.kept.delete(name);this.dropped.add(name);}this.render();this.changed();}
+ included(){return this.files.filter(file=>!this.skipReason(file));}
+ includedDirectories(directories:string[]){return this.uselessActive()?directories.filter(name=>!uselessFile(name,true)):directories;}
  setFiles(files:File[]){
   this.abort?.abort();this.abort=new AbortController();const generation=++this.generation;
   this.files=[...files];this.detections=[];this.page=0;this.query='';this.inspecting=files.length>0;this.completed=0;this.skipped=false;const names=new Set(files.map(file=>file.webkitRelativePath||file.name));
   for(const name of this.overrides.keys())if(!names.has(name.slice(name.indexOf(':')+1)))this.overrides.delete(name);
+  for(const set of [this.dropped,this.kept])for(const name of set)if(!names.has(name))set.delete(name);
   this.render();
   this.pending=sniffFiles(files,{logicalNames:files.map(file=>file.webkitRelativePath||file.name),signal:this.abort.signal,onProgress:progress=>{if(generation!==this.generation)return;this.completed=progress.completed;const status=this.host.querySelector('.inspection-status');if(status)status.textContent=this.status();}}).then(detections=>{if(generation!==this.generation)return;this.detections=detections;this.inspecting=false;this.render();}).catch(error=>{if(generation===this.generation&&(error as Error).name!=='AbortError')throw error;});
   // Retain rejection for ready(), without an unhandled rejection while the user edits.
@@ -45,7 +62,7 @@ export class CreationSettings {
  private status(){return this.inspecting?'Inspecting files · '+this.completed+' / '+this.files.length:this.skipped?'Inspection skipped · using general defaults':'File settings';}
  cancelInspection(){if(!this.inspecting)return;this.abort?.abort();this.detections=this.files.map(file=>unknownDetection(file.webkitRelativePath||file.name,'Inspection skipped; using general defaults.'));this.inspecting=false;this.skipped=true;this.pending=Promise.resolve();this.render();}
  ready(){return this.pending;}
- reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
+ reset(){this.abort?.abort();this.generation++;this.files=[];this.detections=[];this.inspecting=false;this.skipped=false;this.overrides.clear();this.dropped.clear();this.kept.clear();this.skipUseless=false;this.advanced=false;this.effort='standard';this.pending=Promise.resolve();this.render();}
  private recommendation(index:number):FileCreateOptions{
   const name=this.files[index].webkitRelativePath||this.files[index].name;
   const detection=this.detections[index];
@@ -65,7 +82,7 @@ export class CreationSettings {
  }
  options():FileCreateOptions[]|undefined{
   if(!['zip','7z'].includes(this.format))return undefined;
-  return this.files.map((_file,index)=>this.effective(index));
+  return this.files.flatMap((file,index)=>this.skipReason(file)?[]:[this.effective(index)]);
  }
  private effective(index:number){const auto=this.recommendation(index),file=this.files[index];return this.normalize(this.advanced?{...auto,...this.overrides.get(this.format+':'+(file.webkitRelativePath||file.name))}:auto);}
  private render(){
@@ -80,14 +97,15 @@ export class CreationSettings {
   if(!['zip','7z'].includes(this.format)){const note=document.createElement('p');note.className='inspection-status';note.textContent='Compression applies to the entire archive or stream.';this.host.append(note);}
   else{
    const seven=this.format==='7z',table=document.createElement('table'),head=document.createElement('tr'),body=document.createElement('tbody');
-   for(const label of ['File','Compression','Level',...(seven?['Filter']:[])]){const cell=document.createElement('th');cell.scope='col';cell.textContent=label;head.append(cell);}
+   for(const label of ['File','Compression','Level',...(seven?['Filter']:[]),'']){const cell=document.createElement('th');cell.scope='col';cell.textContent=label;if(!label)cell.innerHTML='<span class="screen-reader-only">Include</span>';head.append(cell);}
    const unused=()=>{const cell=document.createElement('td');cell.className='not-applicable';cell.textContent='—';cell.title='Not used by this compression';return cell;};
    visible.forEach(index=>{
     const file=this.files[index],plan=this.effective(index),label=file.webkitRelativePath||file.name,row=document.createElement('tr');
     const commit=(patch:Partial<FileCreateOptions>)=>{this.overrides.set(this.format+':'+plan.name,this.normalize({...plan,...patch}));this.render();};
     const select=(setting:string,choices:(string|number)[],text:(value:string)=>string,value:string|number,apply:(value:string)=>void)=>{const input=document.createElement('select');input.setAttribute('aria-label',setting+' for '+label);for(const choice of choices){const option=document.createElement('option');option.value=String(choice);option.textContent=text(String(choice));input.append(option);}input.value=String(value);input.addEventListener('change',()=>apply(input.value));return input;};
     const cell=(...inputs:HTMLElement[])=>{const td=document.createElement('td');td.append(...inputs);return td;};
-    const name=document.createElement('th'),path=document.createElement('span'),type=document.createElement('small');name.scope='row';path.textContent=label;type.textContent=this.detections[index]?.label||'Detecting…';type.title=this.detections[index]?.reason||'';name.append(path,type);row.append(name);
+    const reason=this.skipReason(file);if(reason)row.className='skipped';
+    const name=document.createElement('th'),path=document.createElement('span'),type=document.createElement('small');name.scope='row';path.textContent=label;type.textContent=reason||this.detections[index]?.label||'Detecting…';type.title=this.detections[index]?.reason||'';name.append(path,type);row.append(name);
     row.append(cell(select('Compression',this.format==='zip'?['deflate','copy']:codecs,codec=>codecLabels[codec]||codec,plan.codec||'lzma2',codec=>commit({codec,level:undefined,deltaDistance:undefined,filter:usesFilter(codec)?this.recommendation(index).filter||'none':'none'}))));
     const bounds=levels[plan.codec||''];
     row.append(bounds?cell(select('Level',Array.from({length:bounds[1]-bounds[0]+1},(_,at)=>bounds[0]+at),level=>level,plan.level??bounds[2],level=>commit({level:Number(level)}))):unused());
@@ -99,6 +117,8 @@ export class CreationSettings {
       row.append(cell(...inputs));
      }
     }
+    if(reason)row.querySelectorAll('select').forEach(input=>input.disabled=true);
+    row.append(cell(skipButton(label,!!reason,()=>{this.toggleSkip(file);this.host.querySelector<HTMLElement>(`[data-skip-index="${index}"]`)?.focus();},index)));
     body.append(row);
    });
    const thead=document.createElement('thead');thead.append(head);table.append(thead,body);

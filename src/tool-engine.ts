@@ -51,7 +51,7 @@ export class ArchiveEngine {
         worker.onmessage = ({ data }) => { if(generation!==this.generation)return;if (data.progress) { this.emitProgress(data.progress); return; }if(data.expansion){if(expansion)void answerExpansion(budget,expansion,data.expansion.written,()=>generation===this.generation);return;}try{budget.record(data.writeBudgetUsed,grant);}catch(error){finish(error===budget.failure?markOutputLimited(error as Error):error as Error);return;} finish(data.error ? Object.assign(new Error(data.error),{nativeCodecError:data.nativeCodecError===true},data.outputLimited===true?{outputLimited:true}:{}) : undefined, data); };
         worker.onerror = event => finish(new Error(event.message || 'Archive worker failed'));
         worker.onmessageerror = () => finish(new Error('Archive worker response could not be decoded'));
-        worker.postMessage({ expansion,writeBudgetGrant:grant,outputLimitBytes:budget.limit,op, files, names: files.map(file => file.webkitRelativePath || file.name), password, format, directories, outputDirectory, downloadStream, extraction, creation:creation?{fileOptions:creation.fileOptions,codec:creation.codec,filter:creation.filter,level:creation.level,dictionarySize:creation.dictionarySize,deltaDistance:creation.deltaDistance,encryptHeaders:creation.encryptHeaders}:undefined, storageId: lease.name },downloadStream?[downloadStream]:[]);
+        worker.postMessage({ expansion,writeBudgetGrant:grant,outputLimitBytes:budget.limit,op, files, names: files.map(file => file.webkitRelativePath || file.name), password, format, directories, outputDirectory, downloadStream, extraction, creation:creation?{fileOptions:creation.fileOptions,codec:creation.codec,filter:creation.filter,level:creation.level,dictionarySize:creation.dictionarySize,deltaDistance:creation.deltaDistance,encryptHeaders:creation.encryptHeaders,limitedMetadata:creation.limitedMetadata}:undefined, storageId: lease.name },downloadStream?[downloadStream]:[]);
       }).catch(error => { if (generation === this.generation) { this.worker?.terminate(); this.worker = undefined; this.pending = false; this.reject = undefined; if (ownedLease) { this.pendingCleanup.push(removeStorage(ownedLease)); this.leases = this.leases.filter(item => item !== ownedLease); } reject(error); } });
     });
   }
@@ -227,7 +227,7 @@ export class ArchiveEngine {
       const temporary=new NativeEngine(update=>this.emitProgress(update),()=>this.currentBudget);
       this.temporaryNative.add(temporary);
       try{
-        this.stage='pack-tar';const result=await temporary.create(files,{format:'tar',directories:options.directories});
+        this.stage='pack-tar';const result=await temporary.create(files,{format:'tar',directories:options.directories,limitedMetadata:options.limitedMetadata});
         this.checkEpoch(epoch);
         if(result.files.length!==1)throw Error('Expected one temporary TAR archive');
         const tar=new File([result.files[0].blob],'archive.tar');
