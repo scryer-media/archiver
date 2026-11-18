@@ -23,8 +23,8 @@ h2{font-size:15px;line-height:1.4;font-weight:600;margin:0}
 .primary{background:var(--button);color:var(--button-text)}.primary:hover:not(:disabled){background:var(--button-hover)}
 .secondary{background:transparent;border-color:var(--border-strong);color:var(--text)}.secondary:hover:not(:disabled){background:var(--raised)}
 .primary svg,.secondary svg{width:18px;height:18px}
-.quiet,.folder-button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 10px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--label);font-size:13px;font-weight:500}
-.quiet:hover:not(:disabled),.folder-button:hover:not(:disabled){background:var(--raised);color:var(--text)}.quiet svg{width:16px;height:16px}
+.quiet{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 10px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--label);font-size:13px;font-weight:500}
+.quiet:hover:not(:disabled){background:var(--raised);color:var(--text)}.quiet svg{width:16px;height:16px}
 
 .selection-head{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.selection-head h3{font-size:15px;font-weight:600;margin:0}
 .file-list{border:1px solid var(--border);border-radius:12px;max-height:320px;overflow:auto;background:var(--surface)}
@@ -90,3 +90,4 @@ main{padding:0 16px;margin-top:8px}.workspace{border-radius:14px}.tool-body{padd
 .privacy{padding:64px 16px 0}.privacy h2{font-size:20px}
 footer{margin-top:64px;padding:40px 16px 40px}.footer-brand{font-size:22px;gap:12px}.footer-brand img{width:40px;height:40px}
 }
+.open-menu{position:relative;display:inline-flex}.open-menu-list{position:absolute;top:calc(100% + 6px);left:50%;transform:translateX(-50%);z-index:20;display:flex;flex-direction:column;min-width:160px;padding:4px;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface);box-shadow:0 8px 24px rgba(0,0,0,.25)}.open-menu-list[hidden]{display:none}.open-menu-list button{display:flex;align-items:center;min-height:36px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--text);font-size:13px;text-align:left}.open-menu-list button:hover,.open-menu-list button:focus-visible{background:var(--raised);outline:none}.context-buttons .open-menu-list{left:0;transform:none}
