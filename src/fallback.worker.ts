@@ -74,19 +74,23 @@ self.onmessage=async({data})=>{
   const memory = handle || downloadStream ? undefined : new BlobWriter();
   const sink = downloadStream || (handle ? await handle.createWritable() : memory!.writable);
   const downstream = sink.getWriter();
-  let stopped=false;
+  let stopped=false,pending:Uint8Array[]=[],pendingBytes=0;
+  const flush=async()=>{if(!pendingBytes)return;const merged=new Uint8Array(pendingBytes);let at=0;for(const part of pending){merged.set(part,at);at+=part.byteLength;}pending=[];pendingBytes=0;await downstream.write(merged);};
   const stop=async(reason:unknown)=>{if(stopped)return;stopped=true;try{await downstream.abort(reason);}catch{}finally{try{downstream.releaseLock();}catch{}}};
   const writer = new WritableStream<Uint8Array>({
    async write(chunk) {
     try{
     budget!.charge(chunk.byteLength);
     if (!directory && !outputDirectory && !downloadStream && buffered + chunk.byteLength > memoryLimit) throw Error('Output exceeded the 128 MB memory limit.');
-    for(let offset=0;offset<chunk.byteLength;offset+=1024*1024)await downstream.write(chunk.subarray(offset,offset+1024*1024));
+    // Coalesce small chunks: zip.js emits several tiny writes per entry, and each
+    // storage write is an async round trip, which dominated many-file archives.
+    if(chunk.byteLength<262144){pending.push(chunk.slice());pendingBytes+=chunk.byteLength;if(pendingBytes>=1024*1024)await flush();}
+    else{await flush();for(let offset=0;offset<chunk.byteLength;offset+=1024*1024)await downstream.write(chunk.subarray(offset,offset+1024*1024));}
     outputBytes+=chunk.byteLength;if(unit==='output')processedBytes+=chunk.byteLength;emit();
     if (!directory && !outputDirectory && !downloadStream) buffered += chunk.byteLength;
     }catch(error){await stop(error);throw error;}
    },
-   async close(){const notice=setTimeout(()=>emit(true,true),250);try{await downstream.close();stopped=true;downstream.releaseLock();if(unit==='output')filesProcessed++;}catch(error){await stop(error);throw error;}finally{clearTimeout(notice);}emit();},
+   async close(){const notice=setTimeout(()=>emit(true,true),250);try{await flush();await downstream.close();stopped=true;downstream.releaseLock();if(unit==='output')filesProcessed++;}catch(error){await stop(error);throw error;}finally{clearTimeout(notice);}emit();},
    abort: stop,
   });
   return { writer, finish: () => downloadStream ? new Blob() : handle ? handle.getFile() : memory!.getData() };

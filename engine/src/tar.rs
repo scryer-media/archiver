@@ -598,6 +598,13 @@ fn create(request: &Request) -> Result<Value, String> {
         return Err("TAR does not support encryption or per-file compression".into());
     }
     let mut metadata_names = std::collections::HashSet::new();
+    let input_names: std::collections::HashSet<&str> = request
+        .paths
+        .iter()
+        .filter_map(|path| path.strip_prefix("/input/"))
+        .collect();
+    let directory_names: std::collections::HashSet<&str> =
+        request.directories.iter().map(String::as_str).collect();
     for metadata in &request.input_metadata {
         if !metadata_names.insert(metadata.name.as_str()) {
             return Err("Duplicate TAR input metadata path".into());
@@ -608,11 +615,8 @@ fn create(request: &Request) -> Result<Value, String> {
         {
             return Err("TAR input modification time exceeds exact browser range".into());
         }
-        if !request
-            .paths
-            .iter()
-            .any(|path| path.strip_prefix("/input/") == Some(metadata.name.as_str()))
-            && !request.directories.contains(&metadata.name)
+        if !input_names.contains(metadata.name.as_str())
+            && !directory_names.contains(metadata.name.as_str())
         {
             return Err("Unknown TAR input metadata path".into());
         }

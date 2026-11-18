@@ -94,9 +94,11 @@ pub fn run(r: &Request) -> Result<Value, String> {
         .map(|f| f.path().into())
         .collect();
     if r.op == "rebuildParity" {
+        let lookup: std::collections::HashSet<&str> =
+            protected.iter().map(String::as_str).collect();
         for (index, path) in r.paths.iter().enumerate() {
             if let Some(relative) = path.strip_prefix("/input/")
-                && protected.iter().any(|n| n == relative)
+                && lookup.contains(relative)
             {
                 session
                     .bind_file(relative, SourceId(index as u64 + 1))
