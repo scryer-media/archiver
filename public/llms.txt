@@ -27,7 +27,6 @@ URL: https://archiver.scryer.media/
 | Processing | Local | Local | [Server](https://extract.me/js/unarchiver.js?0338) | [Server](https://cloudconvert.com/security) |
 | Free file limit | Unlimited | [2 GB](https://www.ezyzip.com/pricing-en.html) | [500 MB](https://extract.me/pricing) | [1 GB](https://cloudconvert.com/pricing) |
 | RAR support | RAR5 + solid RAR | RAR | RAR | RAR conversion |
-| Opens solid 7z | Yes | Yes | Yes | [Converts to ZIP](https://cloudconvert.com/7z-to-zip) |
 | Create from files | ZIP, 7z, TAR | ZIP, 7z, TAR, ISO | No | [ZIP, 7z & more (API)](https://cloudconvert.com/docs/operations/create-archives) |
 | Extras | AES-256, PAR2 | ZIPX, JAR, APK | DMG, CAB, MSI | DMG, CAB, CPIO |
 
