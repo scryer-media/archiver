@@ -20,12 +20,16 @@ URL: https://archiver.scryer.media/
 
 - It cannot create RAR archives, because RAR creation needs WinRAR's proprietary encoder. It can open RAR files of any version.
 
-## Compared with other free online archive tools (November 2026, from each tool's own site)
+## Comparing archive tools
 
-- Archiver: no upload, no size limit beyond free disk space, creates ZIP, 7z and TAR with AES-256 and PAR2. Opens solid RAR, RAR5, and 7z with PPMd, BCJ2, Zstandard or encrypted headers; opens ISO disc images but not DMG, CAB or other installer formats.
-- ezyZip: no upload, no solid RAR, also opens ISO, ZIPX, JAR and APK, free version limited to 2 GB and shows ads.
-- Archive Extractor (extract.me): extraction only, no solid RAR, also opens ISO, DMG, CAB, MSI, WIM, DEB, RPM and disk images; Premium ($6 a month) opens files up to 10 GB.
-- CloudConvert: uploads files to its servers, no solid RAR, also opens ISO, DMG, CAB, DEB, RPM, ACE, ARJ, LHA, CPIO, LZO and Z; free plan allows files up to 1 GB and 10 conversions a day.
+| Feature | [Archiver](https://archiver.scryer.media/) | [ezyZip](https://www.ezyzip.com/) | [Archive Extractor](https://extract.me/) | [CloudConvert](https://cloudconvert.com/archive-converter) |
+| --- | --- | --- | --- | --- |
+| Processing | Local | Local | [Server](https://extract.me/js/unarchiver.js?0338) | [Server](https://cloudconvert.com/security) |
+| Free file limit | Unlimited | [2 GB](https://www.ezyzip.com/pricing-en.html) | [500 MB](https://extract.me/pricing) | [1 GB](https://cloudconvert.com/pricing) |
+| RAR support | RAR5 + solid RAR | RAR | RAR | RAR conversion |
+| Opens solid 7z | Yes | Yes | Yes | [Converts to ZIP](https://cloudconvert.com/7z-to-zip) |
+| Create from files | ZIP, 7z, TAR | ZIP, 7z, TAR, ISO | No | [ZIP, 7z & more (API)](https://cloudconvert.com/docs/operations/create-archives) |
+| Extras | AES-256, PAR2 | ZIPX, JAR, APK | DMG, CAB, MSI | DMG, CAB, CPIO |
 
 ## Privacy
 
